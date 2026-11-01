@@ -1,0 +1,7 @@
+node_modules
+dist
+e2e/screenshots
+artifact-build
+dist-dev
+.env
+*.log
