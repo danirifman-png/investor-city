@@ -12,6 +12,25 @@ export interface NotebookView {
   flags: string[];
   concepts: string[];
   curiosities: string[];
+  /** The player's level: beginners get the simple words first, experienced players the extra depth. */
+  level: number;
+}
+
+/**
+ * A concept in words that fit the player's experience: levels 1-2 read one
+ * simple sentence (the full text one tap away), levels 3-5 the full text,
+ * and from level 6 an extra line with the formula or the deeper idea.
+ */
+export function conceptText(id: string, level: number): HTMLElement[] {
+  if (level <= 2) {
+    return [
+      h('p', { class: 'concept-simple' }, [t(`concept.${id}.simple`)]),
+      h('details', { class: 'concept-more' }, [h('summary', {}, [t('concept.more')]), h('p', {}, [t(`concept.${id}.body`)])]),
+    ];
+  }
+  const out = [h('p', {}, [t(`concept.${id}.body`)])];
+  if (level >= 6) out.push(h('p', { class: 'concept-deep' }, [t(`concept.${id}.deep`)]));
+  return out;
 }
 
 export interface NotebookOptions {
@@ -329,7 +348,7 @@ export class Notebook {
           v.concepts.includes(id)
             ? h('li', { class: 'found', 'data-concept': id }, [
                 h('strong', {}, [t(`concept.${id}.title`)]),
-                h('p', {}, [t(`concept.${id}.body`)]),
+                ...conceptText(id, v.level),
                 h('div', { class: 'card-example' }, [h('strong', {}, [t('concept.example')]), h('span', {}, [t(`concept.${id}.example`)])]),
               ])
             : h('li', { class: 'missing', 'data-concept': id }, [h('strong', {}, ['🔒']), h('p', {}, [t('nb.conceptLocked')])]),

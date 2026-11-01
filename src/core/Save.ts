@@ -1,5 +1,6 @@
 import { sanitizeMissionRecord, type MissionRecord } from './BuildingMissions';
 import { newMoney, sanitizeMoney, type MoneyState } from './Money';
+import { newShop, sanitizeShop, type ShopState } from './Shop';
 import { newBusinessRecord, sanitizeBusinessRecord, type BusinessRecord } from './Business';
 import { sanitizeLook, type CharacterLook } from '../content/characterOptions';
 import { DISTRICT_IDS, type ZoneId } from '../content/cityPlan';
@@ -61,6 +62,8 @@ export interface SaveData {
   growth: ProgressionState;
   /** Savings account and city shares. */
   money: MoneyState;
+  /** Shop items owned and worn (added without a version bump: missing means empty). */
+  shop: ShopState;
 }
 
 export interface StorageLike {
@@ -84,6 +87,7 @@ export function newSave(character: CharacterLook, now = Date.now()): SaveData {
     missions: { branch: newBranch(), pizzaShop: newShopRecord(), business: newBusinessRecord(), buildings: {} },
     found: [],
     money: newMoney(),
+    shop: newShop(),
     learning: { concepts: [], curiosities: [] },
     growth: newProgression(),
   };
@@ -126,6 +130,7 @@ export function migrate(raw: unknown): SaveData | null {
   const missions = (src.missions ?? {}) as Record<string, unknown>;
   base.missions = { branch: sanitizeBranch(missions.branch), pizzaShop: sanitizeShopRecord(missions.pizzaShop), business: sanitizeBusinessRecord(missions.business), buildings: sanitizeMissionRecord(missions.buildings) };
   base.money = sanitizeMoney(src.money);
+  base.shop = sanitizeShop(src.shop);
   base.found = Array.isArray(src.found) ? [...new Set(src.found.filter((x): x is string => typeof x === 'string' && x.length < 40))].slice(0, 400) : [];
   const learning = (src.learning ?? {}) as Record<string, unknown>;
   const pick = (list: unknown, allowed: readonly string[]) =>

@@ -179,18 +179,26 @@ function fitHelmet(head: THREE.Object3D, root: THREE.Object3D, box: THREE.Box3):
   return helmet;
 }
 
-/** The helmet of a hero model (made on first use, so it fits the hero's own hair). */
-export function heroHelmet(scene: THREE.Object3D): THREE.Object3D | null {
-  const head = scene.getObjectByName('Head');
-  if (!head) return null;
-  if (head.userData.helmet) return head.userData.helmet as THREE.Object3D;
-  const box = heroHeadBox(scene);
-  return box ? fitHelmet(head, scene, box) : null;
+/** A head to dress: the head bone or group, the body root it is measured in, and its size there (upright, facing +z). */
+export interface HeadFrame {
+  head: THREE.Object3D;
+  root: THREE.Object3D;
+  box: THREE.Box3;
 }
 
-/** The helmet of the built body (made on first use). */
-export function rigHelmet(head: THREE.Object3D): THREE.Object3D {
-  if (head.userData.helmet) return head.userData.helmet as THREE.Object3D;
+/** The head of a hero model (measured once, so hats fit the hero's own hair). */
+export function heroHead(scene: THREE.Object3D): HeadFrame | null {
+  const head = scene.getObjectByName('Head');
+  if (!head) return null;
+  if (head.userData.frame) return head.userData.frame as HeadFrame;
+  const box = heroHeadBox(scene);
+  if (!box) return null;
+  return (head.userData.frame = { head, root: scene, box });
+}
+
+/** The head of the built body. */
+export function rigHead(head: THREE.Object3D): HeadFrame {
+  if (head.userData.frame) return head.userData.frame as HeadFrame;
   const root = rootOf(head);
   root.updateWorldMatrix(true, true);
   const toLocal = root.matrixWorld.clone().invert();
@@ -198,11 +206,36 @@ export function rigHelmet(head: THREE.Object3D): THREE.Object3D {
   const v = new THREE.Vector3();
   head.traverse((o) => {
     const m = o as THREE.Mesh;
-    if (!m.isMesh) return;
+    if (!m.isMesh || m.userData.worn) return;
     const pos = m.geometry.getAttribute('position');
     for (let i = 0; i < pos.count; i++) box.expandByPoint(v.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld).applyMatrix4(toLocal));
   });
-  return fitHelmet(head, root, box);
+  return (head.userData.frame = { head, root, box });
+}
+
+/** Puts an object on the body root so that it follows the head (see `wearHelmet`). `at` is in root space. */
+export function followHead(obj: THREE.Object3D, f: HeadFrame, at: THREE.Vector3): void {
+  f.root.add(obj);
+  f.root.updateWorldMatrix(true, true);
+  const headAt = f.root.worldToLocal(f.head.getWorldPosition(new THREE.Vector3()));
+  obj.userData.follow = { head: f.head, root: f.root, offset: at.clone().sub(headAt) };
+  obj.traverse((o) => (o.userData.worn = true));
+  wearHelmet(obj);
+}
+
+/** The helmet of a hero model (made on first use, so it fits the hero's own hair). */
+export function heroHelmet(scene: THREE.Object3D): THREE.Object3D | null {
+  const f = heroHead(scene);
+  if (!f) return null;
+  if (f.head.userData.helmet) return f.head.userData.helmet as THREE.Object3D;
+  return fitHelmet(f.head, f.root, f.box);
+}
+
+/** The helmet of the built body (made on first use). */
+export function rigHelmet(head: THREE.Object3D): THREE.Object3D {
+  if (head.userData.helmet) return head.userData.helmet as THREE.Object3D;
+  const f = rigHead(head);
+  return fitHelmet(head, f.root, f.box);
 }
 
 const tmpHead = new THREE.Vector3();

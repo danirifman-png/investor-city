@@ -24,6 +24,10 @@ export interface MoneyHooks {
   /** Commits a change: the new wallet and money state. `learn` names concepts the action teaches. */
   commit(wallet: number, money: MoneyState, learn: string[]): void;
   onClose(): void;
+  /** A tab was chosen (the money lesson listens). */
+  onTab?(tab: MoneyTab): void;
+  /** Opens the mall. */
+  onStore?(): void;
 }
 
 export type MoneyTab = 'savings' | 'shares';
@@ -90,10 +94,14 @@ export class MoneyView {
       'div',
       { class: 'money-tabs', role: 'tablist' },
       (['savings', 'shares'] as MoneyTab[]).map((id) =>
-        h('button', { class: 'money-tab', type: 'button', role: 'tab', 'aria-selected': String(id === this.tab), 'data-tab': id, onclick: () => ((this.tab = id), this.draw()) }, [t(`money.tab.${id}`)]),
+        h('button', { class: 'money-tab', type: 'button', role: 'tab', 'aria-selected': String(id === this.tab), 'data-tab': id, onclick: () => ((this.tab = id), this.hooks.onTab?.(id), this.draw()) }, [t(`money.tab.${id}`)]),
       ),
     );
-    const wallet = h('div', { class: 'money-wallet' }, [h('span', { class: 'pc-coin', 'aria-hidden': 'true' }), t('money.wallet', { n: v.wallet })]);
+    const wallet = h('div', { class: 'money-wallet' }, [
+      h('span', { class: 'pc-coin', 'aria-hidden': 'true' }),
+      t('money.wallet', { n: v.wallet }),
+      this.hooks.onStore ? h('button', { class: 'shop-price money-store-btn', type: 'button', onclick: () => this.hooks.onStore?.() }, [t('store.openShort')]) : null,
+    ]);
     const body = this.tab === 'savings' ? this.savings(v.wallet, v.money) : this.shares(v.wallet, v.money);
     this.panel.replaceChildren(
       iconButton('close', t('hud.close'), () => this.close(), 'modal-close'),
@@ -145,7 +153,7 @@ export class MoneyView {
       future,
       h('div', { class: 'shop-row' }, [
         h('span', { class: 'shop-label' }, [t('money.deposit')]),
-        h('div', { class: 'shop-prices' }, [this.btn('10', () => dep(10), wallet < 1), this.btn('50', () => dep(50), wallet < 1), this.btn(t('money.all'), () => dep(wallet), wallet < 1)]),
+        h('div', { class: 'shop-prices money-deposit' }, [this.btn('10', () => dep(10), wallet < 1), this.btn('50', () => dep(50), wallet < 1), this.btn(t('money.all'), () => dep(wallet), wallet < 1)]),
       ]),
       h('div', { class: 'shop-row' }, [
         h('span', { class: 'shop-label' }, [t('money.withdraw')]),
@@ -200,7 +208,7 @@ export class MoneyView {
             held ? t('money.held', { n: held, value: held * price }) : t('money.none'),
             held ? h('b', { class: gain >= 0 ? 'up' : 'down' }, [` ${gain >= 0 ? '+' : ''}${gain}`]) : null,
           ]),
-          h('div', { class: 'shop-prices' }, [this.btn(t('money.buy'), doBuy, wallet < price), this.btn(t('money.sell'), doSell, held < 1)]),
+          h('div', { class: 'shop-prices' }, [this.btn(t('money.buy'), doBuy, wallet < price, 'shop-price stock-buy'), this.btn(t('money.sell'), doSell, held < 1)]),
         ]),
       ]);
     });

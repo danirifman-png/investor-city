@@ -25,8 +25,11 @@ const EXTRAS: Extra[] = [
 
 const ROBOT: Extra = { model: 'models/meshy/robot.glb', x: PLAZA.robot.x, z: PLAZA.robot.z, heading: -Math.PI / 2 - 0.4, walkSpeed: 1.0 };
 
-/** Where the buddy walks relative to the player: a little behind and to the right. */
-const FOLLOW = { side: 1.1, back: 1.3 };
+/** Where the buddy floats relative to the player: a little behind and to the right, at shoulder height. */
+const FOLLOW = { side: 0.9, back: 0.8 };
+/** Bit is a small hovering helper: about a third of a kid's height, floating at shoulder height. */
+const BIT_SCALE = 0.42;
+const HOVER = 1.05;
 
 /**
  * Bit, the helper robot. It waits in the plaza until the player meets it, then
@@ -41,6 +44,8 @@ export class RobotBuddy {
   private animator: AvatarAnimator | null = null;
   private greeted = false;
   private line: { text: string; time: number } | null = null;
+  private time = 0;
+  private lean = 0;
 
   constructor(
     private collision: CollisionWorld,
@@ -50,6 +55,7 @@ export class RobotBuddy {
   attach(object: THREE.Object3D, animator: AvatarAnimator): void {
     this.object = object;
     this.animator = animator;
+    object.scale.multiplyScalar(BIT_SCALE);
     object.position.copy(this.position);
     object.rotation.y = this.heading;
   }
@@ -74,7 +80,7 @@ export class RobotBuddy {
 
   /** The current speech bubble (world position over its head), if any. */
   get bubble(): { x: number; y: number; z: number; text: string } | null {
-    return this.line && this.object?.visible ? { x: this.position.x, y: this.position.y + 1.45, z: this.position.z, text: this.line.text } : null;
+    return this.line && this.object?.visible ? { x: this.position.x, y: this.position.y + HOVER + 0.85, z: this.position.z, text: this.line.text } : null;
   }
 
   update(dt: number, player: { position: THREE.Vector3; heading: number; speed: number } | null): void {
@@ -116,10 +122,14 @@ export class RobotBuddy {
       const ground = this.collision.groundHeight(this.position.x, this.position.z, this.position.y + 0.6);
       this.position.y += (ground - this.position.y) * Math.min(1, dt * 12);
     }
-    o.position.copy(this.position);
+    // it floats: a gentle bob, and leans into the direction it flies
+    this.time += dt;
+    o.position.set(this.position.x, this.position.y + HOVER + Math.sin(this.time * 2.2) * 0.08, this.position.z);
     o.rotation.y = this.heading;
-    // legs stop speeding up past a brisk run (it glides to keep up with the scooter)
-    this.animator.update(dt, Math.min(speed, 4.5));
+    this.lean += (Math.min(speed * 0.05, 0.3) - this.lean) * Math.min(1, dt * 4);
+    o.rotation.x = this.lean;
+    // it flies instead of walking: the legs stay still
+    this.animator.update(dt, 0);
   }
 
   private turn(want: number, dt: number): void {

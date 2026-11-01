@@ -7,11 +7,33 @@ import { RIVER_BOUNDS } from '../world/landmarks/river';
 import { AvatarAnimator, loadGltf, type GestureAnimator } from './AvatarNpc';
 import { CharacterAnimator, RUN_SPEED, WALK_SPEED } from './CharacterAnimator';
 import { buildCharacter, characterHeight, disposeCharacter, type Rig } from './CharacterModel';
-import { heroArms, heroHelmet, reach, rigArms, rigHelmet, wearHelmet } from './riderGear';
+import { heroArms, heroHead, heroHelmet, reach, rigArms, rigHead, rigHelmet, wearHelmet, type HeadFrame } from './riderGear';
+
+/**
+ * How each ride is shown: its model, how high the rider stands, where the
+ * hands hold on (left grip, rider space, +z forward) and how it is turned.
+ * The plain kick scooter is the starting ride; the rest are bought in the mall.
+ */
+interface RideFit {
+  file: string;
+  scale?: number;
+  deck: number;
+  grip?: [number, number, number];
+  rotY?: number;
+  z?: number;
+  /** Floats and bobs above the ground. */
+  hover?: number;
+}
+const RIDES: Record<string, RideFit> = {
+  scooter: { file: 'models/meshy/props/scooter.glb', scale: 0.95, deck: 0.14, grip: [0.22, 1.1, 0.25] },
+  skateboard: { file: 'models/meshy/shop/skateboard.glb', deck: 0.13 },
+  scooterPro: { file: 'models/meshy/shop/scooter_pro.glb', deck: 0.14, grip: [0.2, 1.0, 0.36] },
+  bicycle: { file: 'models/meshy/props/bicycle.glb', deck: 0.42, grip: [0.24, 1.05, 0.52], rotY: Math.PI / 2, z: -0.1 },
+  goKart: { file: 'models/meshy/shop/go_kart.glb', deck: 0.12, grip: [0.15, 0.6, 0.12], z: -0.42 },
+  hoverboard: { file: 'models/meshy/shop/hoverboard.glb', deck: 0.15, hover: 0.28 },
+};
 
 const RADIUS = 0.42;
-/** Height of the scooter deck the rider stands on. */
-const DECK = 0.14;
 const tmpGrip = new THREE.Vector3();
 const tmpPole = new THREE.Vector3();
 /** Take-off speed of a jump (about 1.5 m high with the gravity below). */
@@ -54,7 +76,13 @@ export class PlayerController {
   private airborne = false;
   /** Riding the kick scooter (faster, glides, leans into turns). */
   private riding = false;
+  /** Speed multipliers from bought gear (a faster ride, running shoes). */
+  rideBoost = 1;
+  walkBoost = 1;
   private scooter: THREE.Group | null = null;
+  /** Which ride the scooter key gets on (a bought one, or the plain scooter). */
+  private rideId = 'scooter';
+  private rideTime = 0;
   private lean = 0;
   frozen = false;
   look: CharacterLook;
@@ -93,7 +121,7 @@ export class PlayerController {
     this.rig = buildCharacter(look);
     this.object.add(this.rig.root);
     this.rigAnimator.setRig(this.rig);
-    this.rig.root.position.y = this.riding ? DECK : 0;
+    this.rig.root.position.y = this.riding ? this.lift : 0;
     this.showModel();
   }
 
@@ -146,7 +174,7 @@ export class PlayerController {
     const m = this.frozen ? { x: 0, y: 0, magnitude: 0 } : this.input.move();
     const running = this.input.running();
     // analog stick: a gentle push walks slowly; the run toggle keeps a real run even on a half push
-    const top = this.riding ? SCOOTER_SPEED : running ? RUN_SPEED : WALK_SPEED;
+    const top = this.riding ? SCOOTER_SPEED * this.rideBoost : (running ? RUN_SPEED : WALK_SPEED) * this.walkBoost;
     const target = m.magnitude > 0.05 ? top * Math.max(this.riding ? 0.5 : running ? 0.75 : 0.35, m.magnitude) : 0;
 
     // camera-relative direction: "up" walks away from the camera
@@ -224,7 +252,16 @@ export class PlayerController {
       this.object.rotation.z = 0;
     }
     this.sync();
-    if (this.riding) this.holdOn();
+    if (this.riding) {
+      const hover = RIDES[this.rideId].hover;
+      if (hover && this.scooter) {
+        this.rideTime += dt;
+        const bob = Math.sin(this.rideTime * 3) * 0.04;
+        this.scooter.position.y = bob;
+        this.setLift(this.lift + bob);
+      }
+      this.holdOn();
+    }
   }
 
   /** On the scooter: helmet on, both hands on the handlebar (after the animation has posed the arms). */
@@ -277,33 +314,72 @@ export class PlayerController {
     return this.riding;
   }
 
-  /** Gets on or off the kick scooter. */
+  private get lift(): number {
+    const fit = RIDES[this.rideId];
+    return fit.deck + (fit.hover ?? 0);
+  }
+
+  /** Chooses the ride (null: the plain scooter). Swaps it at once when riding. */
+  setRide(id: string | null): void {
+    const next = id && RIDES[id] ? id : 'scooter';
+    if (next === this.rideId) return;
+    this.rideId = next;
+    if (this.scooter) {
+      this.object.remove(this.scooter);
+      this.scooter = null;
+    }
+    if (this.riding) this.setRiding(true);
+  }
+
+  get ride(): string {
+    return this.rideId;
+  }
+
+  /** Gets on or off the ride. */
   setRiding(on: boolean): void {
     this.riding = on;
     if (on && !this.scooter) {
+      const fit = RIDES[this.rideId];
       this.scooter = buildScooter();
       this.object.add(this.scooter);
-      // swap in the Meshy scooter once it has loaded; the primitive one stays as the fallback
+      // swap in the model once it has loaded; the primitive scooter stays as the fallback
       const holder = this.scooter;
-      void loadGltf('models/meshy/props/scooter.glb')
+      void loadGltf(fit.file)
         .then((g) => {
           const model = g.scene.clone(true);
-          model.scale.setScalar(0.95);
+          model.scale.setScalar(fit.scale ?? 1);
+          model.rotation.y = fit.rotY ?? 0;
+          model.position.set(0, fit.hover ?? 0, fit.z ?? 0);
           model.traverse((o) => ((o as THREE.Mesh).isMesh ? (o.castShadow = true) : null));
           for (const c of [...holder.children]) c.visible = false;
           holder.add(model);
+          if (fit.hover) holder.add(hoverGlow());
           holder.userData.wheels = [];
-          // the Meshy bar is higher and further back than the primitive one
-          holder.userData.grips = [new THREE.Vector3(0.22, 1.1, 0.25), new THREE.Vector3(-0.22, 1.1, 0.25)];
+          holder.userData.grips = fit.grip ? [new THREE.Vector3(...fit.grip), new THREE.Vector3(-fit.grip[0], fit.grip[1], fit.grip[2])] : undefined;
         })
         .catch(() => undefined);
     }
     if (this.scooter) this.scooter.visible = on;
     if (!on) this.helmetsOff();
     // stand on the deck
-    const lift = on ? DECK : 0;
-    this.rig.root.position.y = lift;
-    if (this.hero) this.hero.scene.position.y = lift;
+    this.setLift(on ? this.lift : 0);
+  }
+
+  private setLift(y: number): void {
+    this.rig.root.position.y = y;
+    if (this.hero) this.hero.scene.position.y = y;
+  }
+
+  /** The head being shown now, for hats and glasses. */
+  headFrame(): HeadFrame | null {
+    return this.hero && this.look.model !== 'custom' ? heroHead(this.hero.scene) : rigHead(this.rig.head);
+  }
+
+  /** World position of the right hand (for holding a treat). */
+  rightHand(out: THREE.Vector3): THREE.Vector3 {
+    const arms = this.hero && this.look.model !== 'custom' ? heroArms(this.hero.scene) : rigArms(this.rig);
+    if (arms) return arms.right.hand(out);
+    return this.object.localToWorld(out.set(-0.3, 0.8, 0.2));
   }
 
   private sync(): void {
@@ -313,6 +389,17 @@ export class PlayerController {
     const body = this.hero && this.look.model !== 'custom' ? this.hero.scene : this.rig.root;
     body.rotation.z = this.riding ? this.lean : 0;
   }
+}
+
+/** A soft cyan glow under a hoverboard. */
+function hoverGlow(): THREE.Mesh {
+  const glow = new THREE.Mesh(
+    new THREE.CircleGeometry(0.45, 24).rotateX(-Math.PI / 2),
+    new THREE.MeshBasicMaterial({ color: '#5ff3ff', transparent: true, opacity: 0.45, depthWrite: false, blending: THREE.AdditiveBlending }),
+  );
+  glow.scale.set(0.6, 1, 1.2);
+  glow.position.y = 0.04;
+  return glow;
 }
 
 /** A kid's kick scooter built from primitives (a Meshy model can replace it later). Front toward +Z. */

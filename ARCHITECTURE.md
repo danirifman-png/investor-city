@@ -323,6 +323,15 @@ Added after feedback asking for a more realistic look everywhere.
 - **Outdoor.** `Style.ts` paints the ground (running-bond paving, lawn, asphalt with grit) by vertex colour; the vivid palette is calmer. `world/Trees.ts` replaces the batched trees with Meshy trees (plane, olive, cypress, palm) drawn as one `InstancedMesh` per model part once loaded; the batched trees stay as the fallback. `ParkedCars` parks Meshy cars along both kerbs of the major roads (collision is added at build time). NPCs stand on the collision ground (`Npcs.ground`).
 - **Buildings.** `world/facadeTextures.ts` paints the facade (stone surrounds, sills, string courses, roller shutters, curtains, iron balconies, air conditioners), the curtain wall of the towers and clay roof tiles, each with a normal map and a surface texture (red: how much the building colour tints the pixel, green: roughness, blue: metalness). `maskVertexColour` keeps glass and frames untinted. `Batcher.facade` adds a cornice and coping; `Batcher.gable` builds two tiled slopes with UVs in metres and plain gable ends.
 
+## Sound, lessons, shop and publishing
+
+- **Sound** (`core/Sound.ts`): everything is synthesised with Web Audio, so there are no audio files. Effects (coin, chest, jump, door, portal, success, level up) and a small music sequencer that plays the original tunes in `content/music.ts`. `themeFor()` picks a tune by zone, room and night; each tune cycles A A B A through four arrangements so it changes over time, and tunes crossfade. Mute is stored locally and music pauses while the tab is hidden.
+- **Lessons** (`ui/Coach.ts`): short guided lessons (basics with finding Bit, the lemonade business, money with savings and shares, the shop). A step finishes only by doing it; the control it talks about pulses; each lesson can be skipped and is remembered per device.
+- **Level-based texts**: notebook concepts have a `.simple` text for levels 1 and 2 and a `.deep` add-on from level 6 (`conceptText`).
+- **Shop** (`content/shop.ts` data, `core/Shop.ts` pure logic, `ui/ShopView.ts`): coins are a game score only. Treats are used up, kept items can be worn or ridden and sold back for 60%. Lessons on the cards: need or want, the logo cap (opportunity cost), pet food (a fixed cost, at most 7 days charged and the pet just waits at home when the wallet is empty). No sales, timers or "only today".
+- **Gear** (`character/Gear.ts`): hats, glasses and the backpack are fitted to the shown head (sizes relative to the head) and follow it; the hat comes off for the helmet while riding. The balloon floats on a line from the hand, pets follow (the robot hovers), and a bought treat is held for 4 s. Rides are a table in `PlayerController` (model, deck height, grips, hover).
+- **Publishing**: `.github/workflows/pages.yml` runs the tests, builds and deploys to GitHub Pages on every push to `main`.
+
 ## What later phases plug into
 
 - More missions follow the same pattern: a data file for numbers and options, a graph fragment

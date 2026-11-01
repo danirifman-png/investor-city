@@ -1,5 +1,11 @@
 import * as THREE from 'three';
 import { Sound } from './Sound';
+import { Gear } from '../character/Gear';
+import { Fireworks } from '../world/Fireworks';
+import { ShopView } from '../ui/ShopView';
+import { SHOP_BY_ID, type ShopCategory } from '../content/shop';
+import { payUpkeep, rideSpeed, sellPrice, walkSpeed, type ShopState } from './Shop';
+import { themeFor } from '../content/music';
 import { Coach } from '../ui/Coach';
 import { loadAvatar } from '../character/AvatarNpc';
 import { HERO_IDS, heroModel } from '../character/hero';
@@ -190,6 +196,10 @@ export class Game {
   private eventDecor!: CityEventDecor;
   readonly biz: BusinessView;
   readonly money: MoneyView;
+  readonly store: ShopView;
+  /** Worn things and the pet, drawn on the hero (see world/Gear). */
+  private gear: Gear;
+  private fw = new Fireworks();
   readonly missionsView: MissionView;
   readonly settings: SettingsPanel;
   readonly complete: CompleteScreen;
@@ -241,6 +251,7 @@ export class Game {
     this.eventDecor = new CityEventDecor();
     this.eventDecor.show(this.cityEvent());
     this.city.root.add(this.eventDecor.group);
+    this.scene.add(this.fw.group);
     this.scene.add(this.interiors.group, this.interiors.doorGroup, this.curios.group, this.collect.group, this.bizSite.group);
     const sky = this.interiors.rooms.get('skyLand')!;
     this.sky = new SkyTreasure(sky.ox, sky.oz);
@@ -260,6 +271,8 @@ export class Game {
     ];
     this.player.object.traverse((o) => (o.castShadow = (o as THREE.Mesh).isMesh));
     this.scene.add(this.player.object);
+    this.gear = new Gear(this.player);
+    this.scene.add(this.gear.group);
     // the illustrated hero replaces the built body once its model arrives
     this.loadHeroFor(this.player.look);
     this.studio.loadHero(this.player.look.hero);
@@ -333,7 +346,7 @@ export class Game {
     this.notebook = new Notebook({
       view: () => {
         const d = this.data;
-        return d ? { branch: d.missions.branch, flags: d.social.flags, concepts: d.learning.concepts, curiosities: d.learning.curiosities } : null;
+        return d ? { branch: d.missions.branch, flags: d.social.flags, concepts: d.learning.concepts, curiosities: d.learning.curiosities, level: levelOf(d.growth.xp).level } : null;
       },
       onChange: () => {
         this.updateSocialUi();
@@ -385,11 +398,21 @@ export class Game {
         d.money = money;
         this.hud.playerCard.update(d.character.nickname, d.character.topColor, d.growth);
         if (learn.length) this.learn(learn);
+        if (learn.includes('interest')) this.coach.did('deposit');
+        if (learn.includes('shares')) this.coach.did('buyShare');
         this.save(false);
       },
       onClose: () => this.hud.closeOverlays(),
+      onTab: (tab) => tab === 'shares' && this.coach.did('sharesTab'),
+      onStore: () => this.openStore(),
     });
     this.hud.addOverlay(this.money.el, () => this.money.close());
+    this.store = new ShopView({
+      view: () => (this.data ? { wallet: this.data.growth.coins, level: levelOf(this.data.growth.xp).level, shop: this.data.shop } : null),
+      commit: (wallet, shop, change) => this.onStore(wallet, shop, change),
+      onClose: () => this.hud.closeOverlays(),
+    });
+    this.hud.addOverlay(this.store.el, () => this.store.close());
     this.missionsView = new MissionView({
       level: () => levelOf(this.data?.growth.xp ?? 0).level,
       record: () => this.data?.missions.buildings ?? {},
@@ -520,9 +543,15 @@ export class Game {
     this.checkQuests();
     this.updateSocialUi();
     this.announceCityEvent();
+    this.payPet();
+    this.applyGear();
     const portrait = window.innerWidth / window.innerHeight < 0.8;
     const behind = this.player.heading + Math.PI;
-    window.setTimeout(() => this.mode === 'playing' && this.coach.start(), firstTime ? 3200 : 1500);
+    window.setTimeout(() => {
+      if (this.mode !== 'playing') return;
+      this.coach.start('basics');
+      this.nextLesson();
+    }, firstTime ? 3200 : 1500);
     if (quiet) return;
     this.cam.flyTo(this.player.position.x, this.player.position.z, portrait ? VIEW.portrait : VIEW.dist, firstTime ? 2.4 : 1.6, { yaw: behind, pitch: VIEW.pitch });
     if (firstTime) window.setTimeout(() => this.player.animator.play('wave'), 2300);
@@ -533,6 +562,7 @@ export class Game {
     this.hud.setNight(night);
     if (this.data) this.data.settings.night = night;
     this.bus.emit('night:changed', night);
+    this.updateMusic();
     return night;
   }
 
@@ -636,6 +666,75 @@ export class Game {
     this.player.animator.play('wave');
     this.select(poi.id);
     this.bus.emit('poi:interact', poi.id);
+    // the mall and the market stalls are shops
+    if (poi.key === 'mall' || poi.key === 'market') this.openStore(poi.key === 'market' ? 'food' : undefined);
+  }
+
+  private openStore(tab?: ShopCategory): void {
+    if (!this.data) return;
+    this.hud.closeOverlays();
+    this.store.show(tab);
+    this.cam.enabled = false;
+    this.coach.did('openStore');
+  }
+
+  /** A purchase, sale or outfit change from the shop. */
+  private onStore(wallet: number, shop: ShopState, change: { bought?: string; sold?: string; equip?: string }): void {
+    const d = this.data;
+    if (!d) return;
+    d.growth.coins = Math.max(0, Math.round(wallet));
+    d.shop = shop;
+    this.hud.playerCard.update(d.character.nickname, d.character.topColor, d.growth);
+    const name = (id: string) => t(`shop.item.${id}.name`);
+    if (change.bought) {
+      this.coach.did('buyItem');
+      const item = SHOP_BY_ID[change.bought];
+      this.sound.play(item.kind === 'treat' ? 'coin' : 'chest');
+      if (item.kind === 'treat') {
+        this.player.animator.play('cheer');
+        this.hud.toast(`${item.icon} ${t('store.boughtTreat', { name: name(item.id) })}`, 2200);
+        this.gear.holdTreat(item.id);
+        if (item.id === 'fireworks') {
+          this.fw.show(this.player.position.x, this.player.position.z);
+          this.sound.play('levelUp');
+        }
+        else window.setTimeout(() => this.showCard({ kind: 'curio', kicker: t('store.kicker'), title: `${item.icon} ${name(item.id)}`, body: t(`shop.item.${item.id}.fact`) }), 900);
+      } else {
+        this.hud.toast(`${item.icon} ${t('store.bought', { name: name(item.id) })}`, 2600);
+      }
+      const learn = ['expenses'];
+      if (item.sameAs) learn.push('opportunityCost');
+      if (item.upkeep) learn.push('fixedCost');
+      this.learn(learn);
+    }
+    if (change.sold) this.hud.toast(t('store.sold', { n: sellPrice(SHOP_BY_ID[change.sold]) }), 3200);
+    this.applyGear();
+    this.save(false);
+  }
+
+  /** Puts the bought gear on the hero (rides, and worn things as their models arrive). */
+  private applyGear(): void {
+    const d = this.data;
+    if (!d) return;
+    this.player.rideBoost = rideSpeed(d.shop);
+    this.player.walkBoost = walkSpeed(d.shop);
+    this.gear.apply(d.shop.equipped);
+  }
+
+  /** Pays pet food since the last visit (once per session start). */
+  private payPet(): void {
+    const d = this.data;
+    if (!d) return;
+    const r = payUpkeep(d.shop, d.growth.coins, dayKey(new Date()));
+    if (!r.days) return;
+    d.shop = r.shop;
+    const pet = t(`shop.item.${d.shop.equipped.pet ?? r.shop.owned.find((o) => SHOP_BY_ID[o].slot === 'pet') ?? 'dog'}.name`);
+    if (r.home) window.setTimeout(() => this.hud.toast(t('store.petHome', { name: pet }), 5200), 6000);
+    else {
+      d.growth.coins -= r.spent;
+      window.setTimeout(() => this.hud.toast(t('store.petFed', { name: pet, n: r.spent, days: r.days }), 3600), 6000);
+    }
+    this.applyGear();
   }
 
   /* ---------------------------- characters ----------------------------- */
@@ -893,6 +992,11 @@ export class Game {
 
   private lastZone: ZoneId | null | undefined = undefined;
 
+  /** The music follows the area, the time of day and the room. */
+  private updateMusic(): void {
+    this.sound.setTheme(themeFor({ zone: this.lastZone ?? null, room: this.interiors.current, night: this.atmosphere.isNight }));
+  }
+
   private frame(): void {
     const dt = Math.min(this.clock.getDelta(), 0.1);
     this.elapsed += dt;
@@ -910,6 +1014,7 @@ export class Game {
       const blocked = this.hud.overlayOpen || this.dialog.open || this.fading;
       this.player.frozen = blocked;
       this.player.update(dt, this.cam.state.yaw);
+      this.gear.update(dt);
       this.nearNpc = this.conv ? null : this.npcs.nearest(this.player.position, TALK_RANGE);
       this.nearThing = this.conv ? null : this.findNearThing();
       // characters come first, unless the player stands right at a door or marker
@@ -970,10 +1075,18 @@ export class Game {
     this.collect.group.visible = !this.interiors.current;
     this.bizSite.group.visible = !this.interiors.current;
     this.bizSite.update(this.elapsed, dt, this.nearThing?.kind === 'biz');
+    this.fw.update(dt);
+    if (this.coach.active) {
+      const step = this.coach.step_;
+      if (step === 'goBiz' && this.nearThing?.kind === 'biz') this.coach.did('goBiz');
+      // Bit calls out while the player is looking for it
+      if (step === 'findBit' && !this.extras.buddy.following && !this.extras.buddy.bubble) this.extras.buddy.say(t('robot.callOut'), 3);
+    }
     if (this.coach.active && playing) {
       const p = this.player.position;
       const step = Math.hypot(p.x - this.coachLast.x, p.z - this.coachLast.y);
-      if (step < 2) this.coach.moved(step);
+      // capped, so a teleport or a slow frame counts as a short walk
+      this.coach.moved(Math.min(step, 2));
       this.coachLast.set(p.x, p.z);
     }
     const found = this.collect.update(this.elapsed, dt, playing && !this.interiors.current ? this.player.position : null);
@@ -992,6 +1105,7 @@ export class Game {
     const zone = zoneAt(this.city.layout, focus.x, focus.z)?.id ?? null;
     if (!this.interiors.current && zone !== this.lastZone) {
       this.lastZone = zone;
+      this.updateMusic();
       this.bus.emit('zone:changed', zone);
     }
     if (this.selection.visible) {
@@ -1171,6 +1285,7 @@ export class Game {
     this.player.heading = Math.atan2(bot.position.x - this.player.position.x, bot.position.z - this.player.position.z);
     if (!hasFlag(d.social, 'robot.friend')) d.social.flags.push('robot.friend');
     bot.follow();
+    this.coach.did('findBit');
     this.player.animator.play('wave');
     this.reward({ xp: 20 });
     this.showCard({ kind: 'info', kicker: t('robot.kicker'), title: t('robot.title'), body: t('robot.body'), note: t('robot.note') });
@@ -1238,9 +1353,11 @@ export class Game {
     this.hud.closeOverlays();
     this.biz.show(d.missions.business);
     this.cam.enabled = false;
+    this.coach.did('openBiz');
   }
 
   private onBizDay(r: BizResult, stars: number) {
+    this.coach.did('bizDay');
     const d = this.data!;
     d.missions.business = recordBizDay(d.missions.business, r);
     this.reward({ xp: 10 + stars * 10 });
@@ -1368,6 +1485,7 @@ export class Game {
       this.hud.setIndoors(this.interiors.roomName(id));
       this.sound.play(id === 'skyLand' ? 'portal' : 'door');
       this.coach.did('enter');
+      this.updateMusic();
       this.hud.toast(id === 'skyLand' ? t('sky.arrive') : this.interiors.roomName(id), id === 'skyLand' ? 3200 : undefined);
       if (id === 'skyLand') this.player.animator.play('cheer');
       this.updateSocialUi();
@@ -1381,6 +1499,7 @@ export class Game {
     const go = () => {
       this.sound.play('door');
       this.interiors.setInside(null);
+      window.setTimeout(() => this.updateMusic(), 0);
       this.curios.setInside(null);
       this.city.root.visible = true;
       this.ambient.group.visible = true;
@@ -1512,7 +1631,10 @@ export class Game {
     this.hud.closeOverlays();
     if (which === 'quests') this.questLog.show();
     else if (which === 'bag') this.bag.show();
-    else if (which === 'money') this.money.show();
+    else if (which === 'money') {
+      this.money.show();
+      this.coach.did('openMoney');
+    }
     else this.settings.show();
     this.cam.enabled = false;
   }
@@ -1546,11 +1668,22 @@ export class Game {
     if (!d || (!r.xp && !r.coins)) return;
     const { level, levelUp } = grant(d.growth, r);
     this.updateProgressUi();
+    this.nextLesson();
     if (levelUp) {
       this.hud.playerCard.levelUp(t('toast.levelUp', { n: level }));
       this.sound.play('levelUp');
       this.player.animator.play('cheer');
     }
+  }
+
+  /** Once the basics are done: the money lesson when there are coins to save, then the shop. */
+  private nextLesson(): void {
+    const d = this.data;
+    if (!d || this.coach.active || this.mode !== 'playing' || !Coach.isDone('basics')) return;
+    if (!Coach.isDone('business')) window.setTimeout(() => this.coach.start('business'), 2500);
+    else if (!Coach.isDone('money')) {
+      if (d.growth.coins >= 15) window.setTimeout(() => this.coach.start('money'), 1800);
+    } else if (!Coach.isDone('shop') && d.growth.coins >= 5) window.setTimeout(() => this.coach.start('shop'), 1800);
   }
 
   private updateProgressUi(): void {
