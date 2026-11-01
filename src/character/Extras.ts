@@ -46,6 +46,8 @@ export class RobotBuddy {
   private line: { text: string; time: number } | null = null;
   private time = 0;
   private lean = 0;
+  /** Leg bones, folded away every frame: Bit has no legs, it floats on a glow. */
+  private legs: THREE.Object3D[] = [];
 
   constructor(
     private collision: CollisionWorld,
@@ -58,6 +60,24 @@ export class RobotBuddy {
     object.scale.multiplyScalar(BIT_SCALE);
     object.position.copy(this.position);
     object.rotation.y = this.heading;
+    this.legs = ['LeftUpLeg', 'RightUpLeg'].map((n) => object.getObjectByName(n)).filter((b): b is THREE.Object3D => !!b);
+    this.foldLegs();
+    // a soft thruster glow where the legs were
+    object.updateMatrixWorld(true);
+    const hips = object.getObjectByName('Hips');
+    const hy = hips ? (hips.getWorldPosition(new THREE.Vector3()).y - object.position.y) / object.scale.y : 0.9;
+    const glow = new THREE.Mesh(
+      new THREE.ConeGeometry(0.16, 0.42, 20, 1, true).rotateX(Math.PI),
+      new THREE.MeshBasicMaterial({ color: '#7ff4ff', transparent: true, opacity: 0.55, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide }),
+    );
+    glow.scale.setScalar(0.42 / object.scale.y);
+    glow.position.y = hy - (0.1 / object.scale.y);
+    glow.name = 'bitGlow';
+    object.add(glow);
+  }
+
+  private foldLegs(): void {
+    for (const b of this.legs) b.scale.setScalar(0.001);
   }
 
   /** Starts following (and stops being an obstacle in the plaza). */
@@ -130,6 +150,9 @@ export class RobotBuddy {
     o.rotation.x = this.lean;
     // it flies instead of walking: the legs stay still
     this.animator.update(dt, 0);
+    this.foldLegs();
+    const glow = o.getObjectByName('bitGlow');
+    if (glow) (glow as THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial>).material.opacity = 0.45 + Math.sin(this.time * 9) * 0.12;
   }
 
   private turn(want: number, dt: number): void {

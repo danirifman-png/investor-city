@@ -88,6 +88,33 @@ export function rigArms(rig: { lShoulder: THREE.Object3D; lElbow: THREE.Object3D
   };
 }
 
+/** Leg chains of a Meshy hero: thigh, shin and where the foot (ankle) is. */
+export function heroLegs(scene: THREE.Object3D): { left: ArmChain; right: ArmChain } | null {
+  const chain = (side: 'Left' | 'Right'): ArmChain | null => {
+    const upper = scene.getObjectByName(`${side}UpLeg`);
+    const lower = scene.getObjectByName(`${side}Leg`);
+    const foot = scene.getObjectByName(`${side}Foot`);
+    if (!upper || !lower || !foot) return null;
+    return { upper, lower, hand: (out) => foot.getWorldPosition(out) };
+  };
+  const left = chain('Left');
+  const right = chain('Right');
+  return left && right ? { left, right } : null;
+}
+
+/** Leg chains of the built body: hip and knee joints, the foot below the knee by the knee's resting height. */
+export function rigLegs(rig: { root: THREE.Object3D; lHip: THREE.Object3D; lKnee: THREE.Object3D; rHip: THREE.Object3D; rKnee: THREE.Object3D }): { left: ArmChain; right: ArmChain } {
+  const shin = (knee: THREE.Object3D): number => {
+    if (typeof knee.userData.shin !== 'number') knee.userData.shin = Math.max(0.2, Math.abs(knee.position.y) * 0.9 || 0.4);
+    return knee.userData.shin as number;
+  };
+  const foot = (knee: THREE.Object3D) => (out: THREE.Vector3) => knee.localToWorld(out.set(0, -shin(knee), 0));
+  return {
+    left: { upper: rig.lHip, lower: rig.lKnee, hand: foot(rig.lKnee) },
+    right: { upper: rig.rHip, lower: rig.rKnee, hand: foot(rig.rKnee) },
+  };
+}
+
 /* ------------------------------------------------------------------ */
 /* Helmet                                                              */
 /* ------------------------------------------------------------------ */
@@ -99,7 +126,7 @@ function buildHelmet(rx: number, ry: number, rz: number): THREE.Group {
   const shellMat = new THREE.MeshStandardMaterial({ color: '#ff7a3d', roughness: 0.35, metalness: 0.05 });
   const stripeMat = new THREE.MeshStandardMaterial({ color: '#f7f7f2', roughness: 0.5 });
   const darkMat = new THREE.MeshStandardMaterial({ color: '#253041', roughness: 0.6 });
-  const shell = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 14, 0, Math.PI * 2, 0, Math.PI * 0.52), shellMat);
+  const shell = new THREE.Mesh(new THREE.SphereGeometry(1, 28, 14, 0, Math.PI * 2, 0, Math.PI * 0.6), shellMat);
   shell.scale.set(rx, ry, rz);
   const stripe = new THREE.Mesh(new THREE.SphereGeometry(1.012, 8, 12, -0.16, 0.32, 0, Math.PI * 0.5), stripeMat);
   stripe.scale.set(rx, ry, rz);
@@ -166,8 +193,9 @@ function fitHelmet(head: THREE.Object3D, root: THREE.Object3D, box: THREE.Box3):
   const size = box.getSize(new THREE.Vector3());
   const c = box.getCenter(new THREE.Vector3());
   // the shell sits a little above the middle of the head and covers the hair
-  const baseY = box.min.y + size.y * 0.48;
-  const helmet = buildHelmet((size.x / 2) * 1.1, (box.max.y - baseY) * 1.14, (size.z / 2) * 1.1);
+  // roomy enough to hold big hair: the shell reaches a little below its widest line at the sides and back
+  const baseY = box.min.y + size.y * 0.5;
+  const helmet = buildHelmet((size.x / 2) * 1.2, (box.max.y - baseY) * 1.2, (size.z / 2) * 1.18);
   // it lives on the body root (bone frames may carry scale and shear) and follows the head each frame
   root.add(helmet);
   root.updateWorldMatrix(true, true);

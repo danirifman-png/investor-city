@@ -7,7 +7,7 @@ import { RIVER_BOUNDS } from '../world/landmarks/river';
 import { AvatarAnimator, loadGltf, type GestureAnimator } from './AvatarNpc';
 import { CharacterAnimator, RUN_SPEED, WALK_SPEED } from './CharacterAnimator';
 import { buildCharacter, characterHeight, disposeCharacter, type Rig } from './CharacterModel';
-import { heroArms, heroHead, heroHelmet, reach, rigArms, rigHead, rigHelmet, wearHelmet, type HeadFrame } from './riderGear';
+import { heroArms, heroHead, heroHelmet, heroLegs, reach, rigArms, rigHead, rigHelmet, rigLegs, wearHelmet, type HeadFrame } from './riderGear';
 
 /**
  * How each ride is shown: its model, how high the rider stands, where the
@@ -23,13 +23,28 @@ interface RideFit {
   z?: number;
   /** Floats and bobs above the ground. */
   hover?: number;
+  /** Sits instead of standing: the seat height, where the feet go (left foot), and how far the back leans forward. */
+  seat?: { y: number; feet: [number, number, number]; lean: number; knees: 'up' | 'forward' };
+  /** Pedals: the crank centre (y, z) and its radius; the feet go round with the distance ridden. */
+  pedals?: { y: number; z: number; r: number };
 }
 const RIDES: Record<string, RideFit> = {
   scooter: { file: 'models/meshy/props/scooter.glb', scale: 0.95, deck: 0.14, grip: [0.22, 1.1, 0.25] },
   skateboard: { file: 'models/meshy/shop/skateboard.glb', deck: 0.13 },
   scooterPro: { file: 'models/meshy/shop/scooter_pro.glb', deck: 0.14, grip: [0.2, 1.0, 0.36] },
-  bicycle: { file: 'models/meshy/props/bicycle.glb', deck: 0.42, grip: [0.24, 1.05, 0.52], rotY: Math.PI / 2, z: -0.1 },
-  goKart: { file: 'models/meshy/shop/go_kart.glb', deck: 0.12, grip: [0.15, 0.6, 0.12], z: -0.42 },
+  // a kid's bike: the saddle under the hips, hands on the bar, feet on the pedals
+  bicycle: {
+    file: 'models/meshy/props/bicycle.glb',
+    scale: 0.8,
+    deck: 0,
+    grip: [0.22, 0.84, 0.5],
+    rotY: Math.PI / 2,
+    z: 0.15,
+    seat: { y: 0.78, feet: [0.1, 0.25, 0.15], lean: 0.32, knees: 'forward' },
+    pedals: { y: 0.25, z: 0.15, r: 0.11 },
+  },
+  // the kart's seat is low: sitting with the legs stretched to the pedals, hands on the wheel
+  goKart: { file: 'models/meshy/shop/go_kart.glb', deck: 0, grip: [0.13, 0.6, 0.38], z: 0.35, seat: { y: 0.38, feet: [0.13, 0.3, 0.72], lean: 0.05, knees: 'up' } },
   hoverboard: { file: 'models/meshy/shop/hoverboard.glb', deck: 0.15, hover: 0.28 },
 };
 
@@ -273,6 +288,33 @@ export class PlayerController {
       helmet.visible = true;
       wearHelmet(helmet);
     }
+    const fit = RIDES[this.rideId];
+    if (fit.seat) {
+      // keep the hips on the seat (a new body may have other proportions)
+      const want = fit.seat.y - this.hipHeight();
+      if (Math.abs((useHero ? this.hero!.scene : this.rig.root).position.y - want) > 1e-3) this.setLift(want);
+      // lean the back toward the handlebar or wheel
+      const spine = useHero ? this.hero!.scene.getObjectByName('Spine') : this.rig.spine;
+      if (spine) spine.rotation.x += fit.seat.lean;
+      this.object.updateMatrixWorld(true);
+      const legs = useHero ? heroLegs(this.hero!.scene) : rigLegs(this.rig);
+      if (legs) {
+        const [fx, fy, fz] = fit.seat.feet;
+        const pedals = fit.pedals;
+        const turn = pedals ? this.distance / (pedals.r * 2.2) : 0;
+        for (const [leg, side, phase] of [
+          [legs.left, 1, 0],
+          [legs.right, -1, Math.PI],
+        ] as const) {
+          if (pedals) tmpGrip.set(side * fx, pedals.y + Math.sin(turn + phase) * pedals.r, pedals.z + Math.cos(turn + phase) * pedals.r);
+          else tmpGrip.set(side * fx, fy, fz);
+          this.object.localToWorld(tmpGrip);
+          // knees bend up (kart) or forward over the pedals (bike)
+          tmpPole.set(side * 0.15, fit.seat.knees === 'up' ? 1 : 0.4, 1).normalize().applyQuaternion(this.object.quaternion);
+          reach(leg, tmpGrip, tmpPole);
+        }
+      }
+    }
     const arms = useHero ? heroArms(this.hero!.scene) : rigArms(this.rig);
     const grips = this.scooter?.userData.grips as THREE.Vector3[] | undefined;
     if (!arms || !grips) return;
@@ -316,7 +358,20 @@ export class PlayerController {
 
   private get lift(): number {
     const fit = RIDES[this.rideId];
+    if (fit.seat) return fit.seat.y - this.hipHeight();
     return fit.deck + (fit.hover ?? 0);
+  }
+
+  /** Height of the hips above the feet when standing, for sitting on a seat. */
+  private hipHeight(): number {
+    const useHero = !!this.hero && this.look.model !== 'custom';
+    const body = useHero ? this.hero!.scene : this.rig.root;
+    if (typeof body.userData.hipHeight === 'number') return body.userData.hipHeight;
+    const hips = useHero ? this.hero!.scene.getObjectByName('Hips') : this.rig.hips;
+    if (!hips) return 0.75;
+    this.object.updateMatrixWorld(true);
+    const y = hips.getWorldPosition(tmpGrip).y - this.object.position.y - body.position.y;
+    return (body.userData.hipHeight = THREE.MathUtils.clamp(y, 0.4, 1.1));
   }
 
   /** Chooses the ride (null: the plain scooter). Swaps it at once when riding. */

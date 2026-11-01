@@ -20,6 +20,13 @@ interface CarAgent {
 
 const CAR_COLORS = ['#e34b4b', '#3d7be0', '#f2c14e', '#f4f4f4', '#2c2f36', '#4fc79a', '#f08a4b', '#a57cf2'];
 
+/** Walking loops around the plaza: the fountain, the academy front and the square's width. */
+export const PLAZA_LOOPS: Rect[] = [
+  { x0: -4.5, z0: -11, x1: 15.5, z1: 9 },
+  { x0: -9, z0: -9.5, x1: 9, z1: 24 },
+  { x0: -22, z0: -9, x1: 22, z1: 4 },
+];
+
 export class Ambient {
   readonly group = new THREE.Group();
   private cars: CarAgent[] = [];
@@ -78,14 +85,13 @@ export class Ambient {
 
     // ---- people on the sidewalks (one draw call for all of them, see Crowd.ts)
     // a few strollers also circle the fountain and cross in front of the academy
-    const plaza: Rect[] = [
-      { x0: -4.5, z0: -11, x1: 15.5, z1: 9 },
-      { x0: -9, z0: -9.5, x1: 9, z1: 24 },
-      { x0: -22, z0: -9, x1: 22, z1: 4 },
-    ];
+    const plaza = PLAZA_LOOPS;
     // a light crowd: enough life in the streets without hiding the characters who matter
     const loops = [...walkLoops, ...plaza];
-    this.crowd = new Crowd(loops, quality === 'high' ? 56 : 36);
+    // the named townsfolk (character/Townsfolk.ts) are the city's people now; the
+    // instanced crowd stays available but empty
+    this.crowd = new Crowd(loops, 0);
+    void quality;
     this.group.add(this.crowd.group);
 
     // ---- clouds (they cast soft moving shadows over the city)

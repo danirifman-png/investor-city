@@ -221,14 +221,15 @@ export class Crowd {
     const pick = <T>(a: T[]) => a[Math.floor(rng() * a.length)];
     const geo = personGeometry();
 
-    const n = count;
+    // buffers need at least one slot even for an empty crowd
+    const n = Math.max(1, count);
     const cols = { iSkin: new Float32Array(n * 3), iShirt: new Float32Array(n * 3), iPants: new Float32Array(n * 3), iHair: new Float32Array(n * 3), iShoes: new Float32Array(n * 3), iAccent: new Float32Array(n * 3) };
     const anim = new Float32Array(n * 4);
     const acc = new Float32Array(n);
     const c = new THREE.Color();
     const put = (arr: Float32Array, i: number, hex: string) => c.set(hex).toArray(arr, i * 3);
 
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < count; i++) {
       const r = rng();
       const kind: Kind = r < 0.12 ? 'jog' : r < 0.3 ? 'kid' : r < 0.4 ? 'dog' : 'walk';
       const loop = pick(walkLoops);

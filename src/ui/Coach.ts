@@ -9,7 +9,7 @@ import { h } from './dom';
  *  - basics: walk, jump, find Bit the robot, go into a building, talk to someone.
  *  - business: walk to the lemonade stand, open it, run a first day.
  *  - money: open the money panel, put coins in savings, look at shares, buy one.
- *  - shop: open the mall from the money panel and buy something.
+ *  - shop: walk into the mall (or the market) and buy something.
  */
 
 export type CoachStep = 'move' | 'jump' | 'findBit' | 'enter' | 'talk' | 'goBiz' | 'openBiz' | 'bizDay' | 'openMoney' | 'deposit' | 'sharesTab' | 'buyShare' | 'openStore' | 'buyItem';
@@ -30,7 +30,6 @@ const HIGHLIGHT: Partial<Record<CoachStep, string>> = {
   deposit: '.money-deposit',
   sharesTab: '.money-tab[data-tab="shares"]',
   buyShare: '.stock-buy',
-  openStore: '.money-store-btn',
   buyItem: '.store-card:not(.locked) .shop-price:not([disabled])',
 };
 

@@ -4,6 +4,7 @@ import heLearn from './locales/he.learn.json';
 import heQuests from './locales/he.quests.json';
 import heMissions from './locales/he.missions.json';
 import heShop from './locales/he.shop.json';
+import heTown from './locales/he.town.json';
 
 /**
  * Minimal localization layer. All player-facing strings live in
@@ -16,7 +17,7 @@ type Dictionary = Record<string, string>;
 const LOCALES: Record<string, { dict: Dictionary; dir: 'rtl' | 'ltr' }> = {
   // conversations and learning content (missions, concepts, curiosities) are kept
   // in their own files so writers can work on them separately
-  he: { dict: { ...(he as Dictionary), ...(heDialogue as Dictionary), ...(heLearn as Dictionary), ...(heQuests as Dictionary), ...(heMissions as Dictionary), ...(heShop as Dictionary) }, dir: 'rtl' },
+  he: { dict: { ...(he as Dictionary), ...(heDialogue as Dictionary), ...(heLearn as Dictionary), ...(heQuests as Dictionary), ...(heMissions as Dictionary), ...(heShop as Dictionary), ...(heTown as Dictionary) }, dir: 'rtl' },
 };
 
 let current = 'he';

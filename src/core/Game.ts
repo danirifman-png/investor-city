@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Sound } from './Sound';
 import { Gear } from '../character/Gear';
+import { Townsfolk } from '../character/Townsfolk';
 import { Fireworks } from '../world/Fireworks';
 import { ShopView } from '../ui/ShopView';
 import { SHOP_BY_ID, type ShopCategory } from '../content/shop';
@@ -35,7 +36,7 @@ import { Bag, CompleteScreen, QuestLog, questTracker, SettingsPanel } from '../u
 import { TRAIL } from '../world/landmarks/decor';
 import { QUESTS, XP } from '../content/quests';
 import { advance, grant, levelInfo as levelOf, type ProgressEvent, type Reward } from './Progression';
-import { Ambient } from '../world/Ambient';
+import { Ambient, PLAZA_LOOPS } from '../world/Ambient';
 import { Atmosphere } from '../world/Atmosphere';
 import { buildCity, type City } from '../world/CityBuilder';
 import { Curiosities } from '../world/Curiosities';
@@ -199,6 +200,7 @@ export class Game {
   readonly store: ShopView;
   /** Worn things and the pet, drawn on the hero (see world/Gear). */
   private gear: Gear;
+  private town: Townsfolk;
   private fw = new Fireworks();
   readonly missionsView: MissionView;
   readonly settings: SettingsPanel;
@@ -240,6 +242,8 @@ export class Game {
     this.npcs = new Npcs(this.city.pois, this.city.collision);
     this.scene.add(this.npcs.group);
     this.extras = new PlazaExtras(this.city.collision);
+    this.town = new Townsfolk(PLAZA_LOOPS, this.city.walkLoops);
+    this.scene.add(this.town.group);
     this.scene.add(this.extras.group);
     void this.npcs.loadAvatars(vivid).then((ids) => (this.avatars = ids));
 
@@ -404,7 +408,6 @@ export class Game {
       },
       onClose: () => this.hud.closeOverlays(),
       onTab: (tab) => tab === 'shares' && this.coach.did('sharesTab'),
-      onStore: () => this.openStore(),
     });
     this.hud.addOverlay(this.money.el, () => this.money.close());
     this.store = new ShopView({
@@ -1053,6 +1056,7 @@ export class Game {
     }
     this.npcs.update(dt, playing ? this.player.position : null);
     this.extras.update(dt, playing && !this.interiors.current ? this.player.position : null);
+    this.town.update(dt, playing && !this.interiors.current ? this.player.position : null);
     const outdoors = playing && !this.interiors.current;
     const bot = this.extras.buddy;
     if (bot.object) bot.object.visible = !this.interiors.current;
@@ -1100,7 +1104,8 @@ export class Game {
     this.curios.update(this.elapsed, this.interiors.current, this.nearThing?.kind === 'curio' ? this.nearThing.id : null);
     this.ambient.update(this.elapsed, dt, playing ? this.player.position : null);
     const said = playing && !this.conv && !this.interiors.current && this.data?.settings.bubbles !== false ? this.ambient.crowd.bubble() : null;
-    this.hud.setBubble(bot.bubble ?? (said && { x: said.x, y: said.y, z: said.z, text: t(`crowd.line.${said.line}`) }));
+    const local = playing && !this.conv && !this.interiors.current && this.data?.settings.bubbles !== false ? this.town.bubble() : null;
+    this.hud.setBubble(bot.bubble ?? (local && { x: local.x, y: local.y, z: local.z, text: t(local.key) }) ?? (said && { x: said.x, y: said.y, z: said.z, text: t(`crowd.line.${said.line}`) }));
 
     const zone = zoneAt(this.city.layout, focus.x, focus.z)?.id ?? null;
     if (!this.interiors.current && zone !== this.lastZone) {
