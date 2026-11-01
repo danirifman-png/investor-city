@@ -8,8 +8,8 @@
  * higher level. There are no sales, timers or "only today" offers.
  */
 
-export type ShopCategory = 'food' | 'clothes' | 'rides' | 'pets' | 'fun';
-export const SHOP_CATEGORIES: ShopCategory[] = ['food', 'clothes', 'rides', 'pets', 'fun'];
+export type ShopCategory = 'food' | 'clothes' | 'rides' | 'pets' | 'fun' | 'home';
+export const SHOP_CATEGORIES: ShopCategory[] = ['food', 'clothes', 'rides', 'pets', 'fun', 'home'];
 
 /** Where a worn item goes on the hero. */
 export type Slot = 'hat' | 'glasses' | 'back' | 'feet' | 'ride' | 'pet';
@@ -37,6 +37,8 @@ export interface ShopItem {
   upkeep?: number;
   /** A cheaper item that does the same job (the logo lesson). */
   sameAs?: string;
+  /** Furniture: shows up in the player's home (needs a home to be used). */
+  furniture?: boolean;
 }
 
 export const SHOP_ITEMS: ShopItem[] = [
@@ -47,6 +49,8 @@ export const SHOP_ITEMS: ShopItem[] = [
   { id: 'cottonCandy', category: 'food', kind: 'treat', price: 4, level: 1, icon: '🍭', need: false },
   { id: 'popcorn', category: 'food', kind: 'treat', price: 3, level: 1, icon: '🍿', need: false },
   { id: 'apple', category: 'food', kind: 'treat', price: 2, level: 1, icon: '🍎', need: true },
+  { id: 'water', category: 'food', kind: 'treat', price: 1, level: 1, icon: '💧', need: true },
+  { id: 'sandwich', category: 'food', kind: 'treat', price: 5, level: 1, icon: '🥪', need: true },
   // clothes: the same cap with and without a logo
   { id: 'sneakers', category: 'clothes', kind: 'keep', price: 40, level: 1, icon: '👟', slot: 'feet', need: true, speed: 1.15 },
   { id: 'capPlain', category: 'clothes', kind: 'keep', price: 15, level: 1, icon: '🧢', slot: 'hat', need: false },
@@ -69,6 +73,17 @@ export const SHOP_ITEMS: ShopItem[] = [
   // fun
   { id: 'balloon', category: 'fun', kind: 'keep', price: 8, level: 1, icon: '🎈', slot: 'back', need: false },
   { id: 'fireworks', category: 'fun', kind: 'treat', price: 25, level: 2, icon: '🎆', need: false },
+  // home: furniture for the player's own home (rented or bought)
+  { id: 'bed', category: 'home', kind: 'keep', price: 60, level: 4, icon: '🛏️', need: true, furniture: true },
+  { id: 'fridge', category: 'home', kind: 'keep', price: 55, level: 4, icon: '🧊', need: true, furniture: true },
+  { id: 'table', category: 'home', kind: 'keep', price: 40, level: 4, icon: '🪑', need: true, furniture: true },
+  { id: 'desk', category: 'home', kind: 'keep', price: 50, level: 4, icon: '📚', need: true, furniture: true },
+  { id: 'sofa', category: 'home', kind: 'keep', price: 70, level: 4, icon: '🛋️', need: false, furniture: true },
+  { id: 'bookshelf', category: 'home', kind: 'keep', price: 45, level: 4, icon: '📖', need: false, furniture: true },
+  { id: 'tv', category: 'home', kind: 'keep', price: 90, level: 4, icon: '📺', need: false, furniture: true },
+  { id: 'rug', category: 'home', kind: 'keep', price: 25, level: 4, icon: '🟡', need: false, furniture: true },
+  { id: 'plant', category: 'home', kind: 'keep', price: 15, level: 4, icon: '🪴', need: false, furniture: true },
+  { id: 'lamp', category: 'home', kind: 'keep', price: 20, level: 4, icon: '💡', need: false, furniture: true },
 ];
 
 export const SHOP_BY_ID: Record<string, ShopItem> = Object.fromEntries(SHOP_ITEMS.map((i) => [i.id, i]));

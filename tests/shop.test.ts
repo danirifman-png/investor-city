@@ -7,7 +7,7 @@ describe('shop', () => {
     expect(new Set(SHOP_ITEMS.map((i) => i.id)).size).toBe(SHOP_ITEMS.length);
     for (const i of SHOP_ITEMS) {
       expect(i.price).toBeGreaterThan(0);
-      if (i.kind === 'keep') expect(i.slot).toBeTruthy();
+      if (i.kind === 'keep') expect(!!i.slot || !!i.furniture).toBe(true);
       if (i.sameAs) expect(SHOP_BY_ID[i.sameAs].price).toBeLessThan(i.price);
     }
   });

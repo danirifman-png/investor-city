@@ -6,12 +6,12 @@ import type { NpcId } from './npcs';
  * back wall (-d/2) to the door (+d/2). Text: `interior.<id>.name`,
  * `spot.<interior>.<spot>.prompt` and, for info spots, `.title / .body`.
  */
-export type InteriorId = 'pizzeria' | 'bank' | 'exchange' | 'academy' | 'newsTower' | 'startupHub' | 'realEstateAgency' | 'skyLand';
+export type InteriorId = 'pizzeria' | 'bank' | 'exchange' | 'academy' | 'newsTower' | 'startupHub' | 'realEstateAgency' | 'skyLand' | 'home';
 
 export interface Hotspot {
   id: string;
-  /** clue: evidence for a mission; info: a short explanation; game: a minigame; mission: the building's missions; exit: the way out; portal: a magic portal to Cloud Land; life: renting or buying a home. */
-  kind: 'clue' | 'info' | 'game' | 'mission' | 'exit' | 'portal' | 'life';
+  /** clue: evidence for a mission; info: a short explanation; game: a minigame; mission: the building's missions; exit: the way out; portal: a magic portal to Cloud Land; life: renting or buying a home; rest: sleep; kitchen: eat and drink at home. */
+  kind: 'clue' | 'info' | 'game' | 'mission' | 'exit' | 'portal' | 'life' | 'rest' | 'kitchen';
   x: number;
   z: number;
   /** Marker height (default 1.6). */
@@ -149,7 +149,20 @@ export const INTERIORS: Record<InteriorId, InteriorDef> = {
     door: { dx: 0, dz: 0, y: 0 },
     entry: { x: 0, z: 13 },
     hotspots: [{ id: 'exit', kind: 'exit', x: 0, z: 16.6, y: 3.4 }],
+  },  // the player's own home (rented or bought): one of the houses in the real estate district
+  home: {
+    id: 'home',
+    poi: 'houses',
+    door: { dx: 6, dz: 12.2, y: 0.38 },
+    size: { w: 12, d: 9 },
+    style: { wall: '#fff6e8', lamp: '#fff1d6' },
+    hotspots: [
+      { id: 'bed', kind: 'rest', x: -4.6, z: -1.4, y: 1.4 },
+      { id: 'kitchen', kind: 'kitchen', x: -0.6, z: -3.6, y: 1.8 },
+      { id: 'exit', kind: 'exit', x: 0, z: 3.9, y: 2.2 },
+    ],
   },
+
 };
 
 export const INTERIOR_IDS = Object.keys(INTERIORS) as InteriorId[];

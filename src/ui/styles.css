@@ -3952,3 +3952,51 @@ kbd {
   width: 100%;
   margin: 4px 0 10px;
 }
+
+/* ---------------- the hero's needs (under the player card) ---------------- */
+.pc-needs {
+  display: flex;
+  gap: 6px;
+  margin-top: 3px;
+}
+.pc-need {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.pc-need-icon {
+  font-size: 11px;
+  line-height: 1;
+}
+.pc-need-bar {
+  width: 30px;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.18);
+  overflow: hidden;
+}
+.pc-need-fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: #5fd38a;
+  transition: width 0.6s ease;
+}
+.pc-need.energy .pc-need-fill {
+  background: #ffd84d;
+}
+.pc-need.water .pc-need-fill {
+  background: #5ab8f0;
+}
+.pc-need.low .pc-need-fill {
+  background: #ff8f6b;
+}
+.pc-need.low {
+  animation: needBlink 1.6s ease-in-out infinite;
+}
+@keyframes needBlink {
+  50% { opacity: 0.45; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pc-need.low { animation: none; }
+}

@@ -25,6 +25,8 @@ export class PlayerCard {
   private coins = h('span', { class: 'pc-coins-n' });
   private stars = h('span', { class: 'pc-stars-n' });
   private shown = { xp: -1, coins: -1 };
+  private needs = h('span', { class: 'pc-needs' });
+  private needFill: Record<string, HTMLElement> = {};
 
   constructor(onClick: () => void) {
     this.el = h('button', { class: 'player-card', type: 'button', 'aria-label': t('hud.quests') }, [
@@ -36,12 +38,29 @@ export class PlayerCard {
         ]),
         h('span', { class: 'pc-xp', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': '100' }, [this.fill]),
         h('span', { class: 'pc-top' }, [this.name, this.xpText]),
+        this.needs,
       ]),
     ]);
+    for (const [id, icon] of [['energy', '⚡'], ['food', '🍔'], ['water', '💧']] as const) {
+      const fill = h('span', { class: 'pc-need-fill' });
+      this.needFill[id] = fill;
+      this.needs.append(h('span', { class: `pc-need ${id}`, title: t(`needs.${id}`) }, [h('span', { class: 'pc-need-icon', 'aria-hidden': 'true' }, [icon]), h('span', { class: 'pc-need-bar' }, [fill])]));
+    }
     this.el.addEventListener('click', (e) => {
       e.stopPropagation();
       onClick();
     });
+  }
+
+  /** Energy, food and water, 0 to 100 (low ones blink gently). */
+  setNeeds(n: { energy: number; food: number; water: number }): void {
+    for (const id of ['energy', 'food', 'water'] as const) {
+      const v = Math.round(n[id]);
+      const el = this.needFill[id];
+      el.style.width = `${v}%`;
+      el.parentElement!.parentElement!.classList.toggle('low', v < 25);
+      el.parentElement!.parentElement!.setAttribute('aria-label', `${t(`needs.${id}`)} ${v}%`);
+    }
   }
 
   update(nickname: string, color: string, p: ProgressionState): void {

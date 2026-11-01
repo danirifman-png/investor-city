@@ -126,3 +126,20 @@ export function buildBankInterior(f: Frame, ctx: BuildContext): void {
   for (const x of [-7.2, 7.2]) f.model('ficus_plant_pot', { x, z: 5.1 });
 }
 
+
+/* -------------------------------- home --------------------------------- */
+
+/** The player's home: a small kitchen corner; the rest is furnished with what the player buys (see Interiors.setFurniture). */
+export function buildHomeInterior(f: Frame, ctx: BuildContext): void {
+  // kitchen counter with a sink and a little stove along the back wall
+  f.box(2.6, 0.9, 0.65, '#f4f1ea', { x: -1.0, z: -4.1 });
+  f.box(2.7, 0.06, 0.72, '#8fb8c9', { x: -1.0, z: -4.1, y: 0.9 });
+  ctx.batch.noCollision(() => {
+    f.box(0.6, 0.05, 0.4, '#c9d3da', { x: -1.6, z: -4.1, y: 0.94 });
+    f.cyl(0.03, 0.03, 0.35, '#c9d3da', { x: -1.6, z: -4.35, y: 0.94 }, 8);
+    for (const x of [-0.3, 0.05]) f.cyl(0.13, 0.13, 0.02, '#3a3f4a', { x, z: -4.1, y: 0.94 }, 14);
+    f.box(2.6, 0.5, 0.35, '#f4f1ea', { x: -1.0, z: -4.3, y: 1.9 });
+    // a welcome mat and a coat hook by the door
+    f.box(1.4, 0.02, 0.8, '#b5583a', { x: 0, z: 3.7 });
+  });
+}

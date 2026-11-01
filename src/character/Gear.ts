@@ -218,6 +218,24 @@ export class Gear {
       const apple = new THREE.Mesh(new THREE.SphereGeometry(0.05, 16, 12), new THREE.MeshStandardMaterial({ color: '#d8262e', roughness: 0.4 }));
       apple.position.y = 0.05;
       holder.add(apple);
+    } else if (id === 'water') {
+      // a small blue bottle with a white cap
+      const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.14, 12), new THREE.MeshStandardMaterial({ color: '#5ab8f0', roughness: 0.2, transparent: true, opacity: 0.85 }));
+      bottle.position.y = 0.07;
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.025, 10), new THREE.MeshStandardMaterial({ color: '#ffffff' }));
+      cap.position.y = 0.152;
+      holder.add(bottle, cap);
+    } else if (id === 'sandwich') {
+      // two slices of bread with a green and red filling
+      const bread = new THREE.MeshStandardMaterial({ color: '#e9c48a', roughness: 0.8 });
+      for (const [y, c] of [[0.01, bread], [0.045, bread]] as const) {
+        const b = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.02, 0.09), c);
+        b.position.y = y;
+        holder.add(b);
+      }
+      const fill = new THREE.Mesh(new THREE.BoxGeometry(0.115, 0.016, 0.095), new THREE.MeshStandardMaterial({ color: '#6fbf5a' }));
+      fill.position.y = 0.028;
+      holder.add(fill);
     } else return;
     this.group.add(holder);
     this.treat = { obj: holder, t: 0, size: 1.6, bites: 0 };

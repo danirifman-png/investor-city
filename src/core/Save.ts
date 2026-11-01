@@ -1,6 +1,7 @@
 import { sanitizeMissionRecord, type MissionRecord } from './BuildingMissions';
 import { sanitizeDecisions, type DecisionRecord } from './Decisions';
 import { newLife, sanitizeLife, type LifeState } from './Life';
+import { newNeeds, sanitizeNeeds, type Needs } from './Needs';
 import { newMoney, sanitizeMoney, type MoneyState } from './Money';
 import { newShop, sanitizeShop, type ShopState } from './Shop';
 import { newBusinessRecord, sanitizeBusinessRecord, type BusinessRecord } from './Business';
@@ -70,6 +71,8 @@ export interface SaveData {
   shop: ShopState;
   /** Home, car, bills and the net worth history (added without a version bump: missing means none). */
   life: LifeState;
+  /** Energy, food and water (added without a version bump: missing means full). */
+  needs: Needs;
 }
 
 export interface StorageLike {
@@ -95,6 +98,7 @@ export function newSave(character: CharacterLook, now = Date.now()): SaveData {
     money: newMoney(),
     shop: newShop(),
     life: newLife(),
+    needs: newNeeds(),
     learning: { concepts: [], curiosities: [] },
     growth: newProgression(),
   };
@@ -140,6 +144,7 @@ export function migrate(raw: unknown): SaveData | null {
   base.money = sanitizeMoney(src.money);
   base.shop = sanitizeShop(src.shop);
   base.life = sanitizeLife(src.life);
+  base.needs = sanitizeNeeds(src.needs);
   base.found = Array.isArray(src.found) ? [...new Set(src.found.filter((x): x is string => typeof x === 'string' && x.length < 40))].slice(0, 400) : [];
   const learning = (src.learning ?? {}) as Record<string, unknown>;
   const pick = (list: unknown, allowed: readonly string[]) =>

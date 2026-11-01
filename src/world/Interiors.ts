@@ -6,7 +6,9 @@ import { mulberry32 } from './cityLayout';
 import type { CollisionWorld } from './Collision';
 import { Frame } from './Frame';
 import { buildAcademyInterior, buildEstateInterior, buildExchangeInterior, buildNewsInterior, buildStartupInterior } from './interiors/missionRooms';
-import { buildBankInterior, buildPizzeriaInterior } from './interiors/rooms';
+import { buildBankInterior, buildHomeInterior, buildPizzeriaInterior } from './interiors/rooms';
+import { FURNITURE } from '../content/home';
+import { loadGltf } from '../character/AvatarNpc';
 import { buildSkyLandInterior, roomPortal } from './interiors/skyLand';
 import type { CityMaterials } from './Materials';
 import { Marker } from './Markers';
@@ -39,6 +41,7 @@ const ROOM_BUILDERS: Record<InteriorId, (f: Frame, ctx: BuildContext) => void> =
   startupHub: buildStartupInterior,
   realEstateAgency: buildEstateInterior,
   skyLand: buildSkyLandInterior,
+  home: buildHomeInterior,
 };
 
 export interface Room {
@@ -127,7 +130,7 @@ export class Interiors {
     for (const s of def.hotspots) if (s.kind === 'portal') roomPortal(f, ctx, s.x, s.z, Math.PI / 2);
     const walls: Room['walls'] = [];
     if (!def.open) this.buildWalls(def, ox, oz, group, walls, collision);
-    const markers: Marker[] = def.hotspots.map((s) => new Marker(s.kind === 'mission' || s.kind === 'life' ? 'game' : s.kind === 'portal' ? 'door' : s.kind, ox + s.x, s.y ?? 1.6, oz + s.z, s.id));
+    const markers: Marker[] = def.hotspots.map((s) => new Marker(s.kind === 'mission' || s.kind === 'life' || s.kind === 'rest' || s.kind === 'kitchen' ? 'game' : s.kind === 'portal' ? 'door' : s.kind, ox + s.x, s.y ?? 1.6, oz + s.z, s.id));
     for (const m of markers) group.add(m.sprite);
 
     const staticMeshes = batch.build(materials.byKey);
@@ -239,6 +242,71 @@ export class Interiors {
       group.add(light);
     }
     for (const lx of [-w / 4, w / 4]) for (const lz of [-d / 4, d / 4]) group.add(lampFixture(fin, ox + lx, oz + lz));
+  }
+
+  private furniture = new Map<string, THREE.Object3D>();
+  private mattress: THREE.Object3D | null = null;
+
+  /**
+   * Shows the furniture the player owns in their home (models load as they
+   * arrive; a coloured block stands in until then). Without a bed, a
+   * mattress on the floor.
+   */
+  setFurniture(owned: string[]): void {
+    const room = this.rooms.get('home');
+    if (!room) return;
+    for (const [id, o] of this.furniture) {
+      if (owned.includes(id)) continue;
+      o.removeFromParent();
+      this.furniture.delete(id);
+    }
+    for (const id of owned) {
+      const fit = FURNITURE[id];
+      if (!fit || this.furniture.has(id)) continue;
+      const holder = new THREE.Group();
+      holder.name = `furniture:${id}`;
+      holder.position.set(room.ox + fit.x, 0.05, room.oz + fit.z);
+      holder.rotation.y = fit.rotY;
+      const [bw, bh, bd, color] = fit.box;
+      const block = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, bd), new THREE.MeshStandardMaterial({ color, roughness: 0.7 }));
+      block.position.y = bh / 2;
+      block.castShadow = true;
+      holder.add(block);
+      room.group.add(holder);
+      this.furniture.set(id, holder);
+      void loadGltf(`models/meshy/furniture/${id}.glb`)
+        .then((g) => {
+          const m = g.scene.clone(true);
+          const box = new THREE.Box3().setFromObject(m);
+          const size = box.getSize(new THREE.Vector3());
+          // the models are made at real size; only an oversized one is scaled down to its spot
+          const s = Math.min(1, (fit.width * 1.05) / Math.max(size.x, size.z, 1e-3));
+          m.scale.setScalar(s);
+          m.position.set(-((box.min.x + box.max.x) / 2) * s, -box.min.y * s + (id === 'rug' ? 0.005 : 0), -((box.min.z + box.max.z) / 2) * s);
+          m.traverse((o) => ((o as THREE.Mesh).isMesh ? ((o.castShadow = true), (o.receiveShadow = true)) : null));
+          block.visible = false;
+          holder.add(m);
+          if (id === 'lamp') {
+            // a warm glow from the shade
+            const glow = new THREE.PointLight('#ffd9a0', 4, 6, 1.6);
+            glow.position.y = 1.45;
+            holder.add(glow);
+          }
+        })
+        .catch(() => undefined);
+    }
+    // a mattress on the floor until there is a bed
+    if (!owned.includes('bed') && !this.mattress) {
+      const fit = FURNITURE.bed;
+      const m = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.16, 1.9), new THREE.MeshStandardMaterial({ color: '#d9d4c7', roughness: 0.9 }));
+      m.position.set(room.ox + fit.x, 0.13, room.oz + fit.z);
+      m.receiveShadow = true;
+      room.group.add(m);
+      this.mattress = m;
+    } else if (owned.includes('bed') && this.mattress) {
+      this.mattress.removeFromParent();
+      this.mattress = null;
+    }
   }
 
   /** A point in a room's own coordinates, in world space. */

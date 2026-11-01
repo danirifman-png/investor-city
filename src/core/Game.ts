@@ -62,6 +62,8 @@ import { MoneyView } from '../ui/MoneyView';
 import { MissionView } from '../ui/MissionView';
 import { LifeView, type LifeTab } from '../ui/LifeView';
 import { billsFor, noteWorth, payBills, worth, type Worth } from './Life';
+import { add as addNeeds, consume, drain, lowNeeds, needSpeed, sleep as sleepNeeds } from './Needs';
+import { HOME_MEAL, SLEEP_BED, SLEEP_FLOOR, TAP_WATER, type NeedId } from '../content/needs';
 import { grade as gradeTier, recordTier } from './BuildingMissions';
 import { BUILDING_MISSIONS, TIER_RULES, type MissionBuilding } from '../content/missions/buildings';
 import { accrue, dayIndex, portfolioValue } from './Money';
@@ -217,6 +219,9 @@ export class Game {
   /** The day bills were last checked (bills come once per day played). */
   private billDay = -1;
   private billClock = 0;
+  private needClock = 0;
+  /** Needs already hinted about while low (hinted once until they recover). */
+  private needHinted = new Set<NeedId>();
   readonly settings: SettingsPanel;
   readonly complete: CompleteScreen;
   private questCheck = 0;
@@ -592,6 +597,7 @@ export class Game {
     this.announceCityEvent();
     this.payPet();
     this.payLife();
+    this.showNeeds();
     this.applyGear();
     const portrait = window.innerWidth / window.innerHeight < 0.8;
     const behind = this.player.heading + Math.PI;
@@ -742,6 +748,8 @@ export class Game {
         this.player.animator.play('cheer');
         this.hud.toast(`${item.icon} ${t('store.boughtTreat', { name: name(item.id) })}`, 2200);
         this.gear.holdTreat(item.id);
+        d.needs = consume(d.needs, item.id);
+        this.showNeeds();
         if (item.id === 'fireworks') {
           this.fw.show(this.player.position.x, this.player.position.z);
           this.sound.play('levelUp');
@@ -756,6 +764,10 @@ export class Game {
       this.learn(learn);
     }
     if (change.sold) this.hud.toast(t('store.sold', { n: sellPrice(SHOP_BY_ID[change.sold]) }), 3200);
+    if (change.bought && SHOP_BY_ID[change.bought].furniture) {
+      this.hud.toast(`${SHOP_BY_ID[change.bought].icon} ${t(d.life.home ? 'home.furnitureHome' : 'home.furnitureNoHome')}`, 3600);
+    }
+    this.interiors.setFurniture(d.shop.owned);
     this.applyGear();
     this.save(false);
   }
@@ -767,8 +779,71 @@ export class Game {
     // the car, when owned and chosen, is the ride (the fastest one)
     const car = d.life.car?.drive;
     this.player.rideBoost = car ? 1.9 : rideSpeed(d.shop);
-    this.player.walkBoost = walkSpeed(d.shop);
+    this.player.walkBoost = walkSpeed(d.shop) * needSpeed(d.needs);
     this.gear.apply(car ? { ...d.shop.equipped, ride: 'car' } : d.shop.equipped);
+  }
+
+  /* ------------------------------- needs -------------------------------- */
+
+  private showNeeds(): void {
+    const d = this.data;
+    if (!d) return;
+    this.hud.playerCard.setNeeds(d.needs);
+    this.player.walkBoost = walkSpeed(d.shop) * needSpeed(d.needs);
+  }
+
+  /** Needs go down slowly while playing; a low one gets one gentle hint until it is filled again. */
+  private tickNeeds(seconds: number): void {
+    const d = this.data;
+    if (!d) return;
+    d.needs = drain(d.needs, seconds, !!d.life.home);
+    const low = lowNeeds(d.needs);
+    for (const id of low) {
+      if (this.needHinted.has(id)) continue;
+      this.needHinted.add(id);
+      const key = id === 'energy' ? (d.life.home ? 'needs.tired' : 'needs.tiredNoHome') : `needs.${id}Low`;
+      this.hud.toast(t(key), 4200);
+      this.player.animator.play(id === 'energy' ? 'think' : 'sad');
+    }
+    for (const id of [...this.needHinted]) if (!low.includes(id)) this.needHinted.delete(id);
+    this.showNeeds();
+  }
+
+  /** Sleep in the home: a short fade to night and back, energy refilled (fully in a bed). */
+  private sleepAtHome(): void {
+    const d = this.data;
+    if (!d) return;
+    const bed = d.shop.owned.includes('bed');
+    this.player.animator.play('happy');
+    this.fade(() => {
+      d.needs = sleepNeeds(d.needs, bed ? SLEEP_BED : SLEEP_FLOOR);
+      this.showNeeds();
+      this.save(false);
+      window.setTimeout(() => this.hud.toast(t(bed ? 'home.sleptBed' : 'home.sleptFloor'), 4200), 500);
+    });
+  }
+
+  /** The kitchen: tap water is free; with a fridge, a home-cooked meal costs a little. */
+  private useKitchen(): void {
+    const d = this.data;
+    if (!d) return;
+    const fridge = d.shop.owned.includes('fridge');
+    let text: string;
+    if (fridge && d.growth.coins >= HOME_MEAL.price) {
+      d.growth.coins -= HOME_MEAL.price;
+      d.needs = addNeeds(d.needs, { food: HOME_MEAL.food, water: HOME_MEAL.water });
+      this.gear.holdTreat('sandwich');
+      text = t('home.meal', { n: HOME_MEAL.price });
+      this.hud.playerCard.update(d.character.nickname, d.character.topColor, d.growth);
+    } else {
+      d.needs = addNeeds(d.needs, { water: TAP_WATER });
+      this.gear.holdTreat('water');
+      text = t(fridge ? 'home.waterNoCoins' : 'home.waterNoFridge');
+    }
+    this.sound.play('coin');
+    this.hud.toast(text, 4200);
+    this.showNeeds();
+    this.save(false);
   }
 
   /** Opens the home and car panel. */
@@ -1114,6 +1189,10 @@ export class Game {
       this.player.frozen = blocked;
       this.player.update(dt, this.cam.state.yaw);
       this.gear.update(dt);
+      if (!blocked && !this.conv && (this.needClock += dt) >= 1) {
+        this.tickNeeds(this.needClock);
+        this.needClock = 0;
+      }
       if ((this.billClock -= dt) <= 0) {
         // a new day can start while playing
         this.billClock = 30;
@@ -1344,6 +1423,8 @@ export class Game {
     if (spot.kind === 'mission') return this.openMissions(n.room as MissionBuilding);
     if (spot.kind === 'portal') return this.enterRoom('skyLand');
     if (spot.kind === 'life') return this.openLife('home');
+    if (spot.kind === 'rest') return this.sleepAtHome();
+    if (spot.kind === 'kitchen') return this.useKitchen();
     this.player.animator.play('think');
     this.showCard({ kind: 'info', kicker: t('spot.kicker'), title: t(`spot.${n.room}.${n.spot}.title`), body: t(`spot.${n.room}.${n.spot}.body`) });
   }
@@ -1598,6 +1679,12 @@ export class Game {
 
   private enterRoom(id: InteriorId): void {
     if (!this.data || this.interiors.current === id || this.fading) return;
+    if (id === 'home' && !this.data.life.home) {
+      // the house is waiting: rent or buy it at the agency first
+      this.showCard({ kind: 'info', kicker: t('home.kicker'), title: t('home.lockedTitle'), body: t('home.lockedBody') });
+      return;
+    }
+    if (id === 'home') this.interiors.setFurniture(this.data.shop.owned);
     this.select(null);
     this.walkInTime = 0;
     this.fade(() => {

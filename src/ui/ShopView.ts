@@ -13,7 +13,7 @@ export interface ShopHooks {
   onCarLot?(): void;
 }
 
-const CAT_ICON: Record<ShopCategory, string> = { food: '🍦', clothes: '👕', rides: '🛹', pets: '🐶', fun: '🎈' };
+const CAT_ICON: Record<ShopCategory, string> = { food: '🍦', clothes: '👕', rides: '🛹', pets: '🐶', fun: '🎈', home: '🏠' };
 
 /**
  * The city mall: tabs per category, a card per item with its price, whether
@@ -82,7 +82,12 @@ export class ShopView {
     const owned = shop.owned.includes(item.id);
     const worn = item.slot ? shop.equipped[item.slot] === item.id : false;
     const actions: HTMLElement[] = [];
-    if (owned) {
+    if (owned && !item.slot) {
+      // furniture stays at home: nothing to put on
+      actions.push(
+        h('button', { class: 'shop-price ghost', type: 'button', onclick: () => this.doSell(item, wallet, shop) }, [t('store.sell', { n: sellPrice(item) })]),
+      );
+    } else if (owned) {
       actions.push(
         h('button', { class: 'shop-price', type: 'button', onclick: () => (this.hooks.commit(wallet, toggleEquip(shop, item.id), { equip: item.id }), this.draw()) }, [
           worn ? t('store.takeOff') : t('store.putOn'),
@@ -99,7 +104,7 @@ export class ShopView {
     let status = '';
     if (check === 'level') status = t('store.needLevel', { n: item.level });
     else if (check === 'coins') status = t('store.missing', { n: item.price - wallet });
-    else if (owned) status = worn ? t('store.wearing') : t('store.owned');
+    else if (owned) status = item.furniture ? t('store.atHome') : worn ? t('store.wearing') : t('store.owned');
     const progress =
       check === 'coins'
         ? h('div', { class: 'store-progress', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': String(item.price), 'aria-valuenow': String(wallet) }, [
