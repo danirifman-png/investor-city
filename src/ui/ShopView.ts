@@ -9,6 +9,8 @@ export interface ShopHooks {
   /** Commits a change; `bought` / `sold` name the item for effects and lessons. */
   commit(wallet: number, shop: ShopState, change: { bought?: string; sold?: string; equip?: string }): void;
   onClose(): void;
+  /** Opens the car lot (cars are bought with their running costs, see LifeView). */
+  onCarLot?(): void;
 }
 
 const CAT_ICON: Record<ShopCategory, string> = { food: '🍦', clothes: '👕', rides: '🛹', pets: '🐶', fun: '🎈' };
@@ -65,6 +67,12 @@ export class ShopView {
       tabs,
       wallet,
       h('p', { class: 'card-body store-tip' }, [t(`store.tip.${this.tab}`)]),
+      ...(this.tab === 'rides' && this.hooks.onCarLot
+        ? [h('button', { class: 'mission-tier decision-card car-lot', type: 'button', onclick: () => this.hooks.onCarLot?.() }, [
+            h('span', { class: 'mission-tier-badge', 'aria-hidden': 'true' }, ['🚗']),
+            h('div', { class: 'mission-tier-text' }, [h('small', {}, [t('store.carLot')]), h('strong', {}, [t('life.car.title')]), h('span', {}, [t('store.carLotNote')])]),
+          ])]
+        : []),
       h('div', { class: 'store-grid' }, items.map((i) => this.card(i, v.wallet, v.level, v.shop))),
     );
   }

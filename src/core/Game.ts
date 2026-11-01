@@ -60,9 +60,13 @@ import { CityEventDecor } from '../world/CityEventDecor';
 import { BusinessView, CITY_ICON } from '../ui/BusinessView';
 import { MoneyView } from '../ui/MoneyView';
 import { MissionView } from '../ui/MissionView';
+import { LifeView, type LifeTab } from '../ui/LifeView';
+import { billsFor, noteWorth, payBills, worth, type Worth } from './Life';
 import { grade as gradeTier, recordTier } from './BuildingMissions';
 import { BUILDING_MISSIONS, TIER_RULES, type MissionBuilding } from '../content/missions/buildings';
-import { accrue } from './Money';
+import { accrue, dayIndex, portfolioValue } from './Money';
+import { decisionSeed, decisionState, recordDecision, resolveDecision } from './Decisions';
+import { DECISION_BY_BUILDING } from '../content/decisions';
 import { CITY_EVENTS, cityEventFor, dayKey, recordBizDay, STAGE_RULES, takeHome, upgrade, type BizResult, type CityEventId } from './Business';
 
 export type GameEvents = {
@@ -209,6 +213,10 @@ export class Game {
   private town: Townsfolk;
   private fw = new Fireworks();
   readonly missionsView: MissionView;
+  readonly lifeView: LifeView;
+  /** The day bills were last checked (bills come once per day played). */
+  private billDay = -1;
+  private billClock = 0;
   readonly settings: SettingsPanel;
   readonly complete: CompleteScreen;
   private questCheck = 0;
@@ -402,6 +410,12 @@ export class Game {
     });
     this.hud.addOverlay(this.biz.el, () => this.biz.close());
     this.money = new MoneyView({
+      worth: () => {
+        const d = this.data;
+        const w = this.worthNow();
+        if (!d || !w) return null;
+        return { worth: w, level: levelOf(d.growth.xp).level, history: d.life.history, bills: billsFor(d.life).total };
+      },
       view: () => (this.data ? { wallet: this.data.growth.coins, money: this.data.money } : null),
       commit: (wallet, money, learn) => {
         const d = this.data;
@@ -412,6 +426,7 @@ export class Game {
         if (learn.length) this.learn(learn);
         if (learn.includes('interest')) this.coach.did('deposit');
         if (learn.includes('shares')) this.coach.did('buyShare');
+        this.noteWorth();
         this.save(false);
       },
       onClose: () => this.hud.closeOverlays(),
@@ -422,6 +437,7 @@ export class Game {
       view: () => (this.data ? { wallet: this.data.growth.coins, level: levelOf(this.data.growth.xp).level, shop: this.data.shop } : null),
       commit: (wallet, shop, change) => this.onStore(wallet, shop, change),
       onClose: () => this.hud.closeOverlays(),
+      onCarLot: () => this.openLife('car'),
     });
     this.hud.addOverlay(this.store.el, () => this.store.close());
     this.missionsView = new MissionView({
@@ -429,8 +445,28 @@ export class Game {
       record: () => this.data?.missions.buildings ?? {},
       onFinish: (b, tier, answers) => this.onMissionTier(b, tier, answers),
       onClose: () => this.hud.closeOverlays(),
+      decision: (b) => decisionState(this.data?.missions.decisions ?? {}, b, (this.data?.missions.buildings[b]?.[0] ?? 0) > 0, this.today()),
+      onDecision: (b, k) => this.onDecision(b, k),
     });
     this.hud.addOverlay(this.missionsView.el, () => this.missionsView.close());
+    this.lifeView = new LifeView({
+      view: () => (this.data ? { wallet: this.data.growth.coins, level: levelOf(this.data.growth.xp).level, life: this.data.life, day: this.today() } : null),
+      commit: (wallet, life, message, learn) => {
+        const d = this.data;
+        if (!d) return;
+        d.growth.coins = Math.max(0, Math.round(wallet));
+        d.life = life;
+        this.hud.playerCard.update(d.character.nickname, d.character.topColor, d.growth);
+        if (learn.length) this.learn(learn);
+        this.sound.play('coin');
+        this.noteWorth();
+        this.applyGear();
+        this.save(false);
+        void message;
+      },
+      onClose: () => this.hud.closeOverlays(),
+    });
+    this.hud.addOverlay(this.lifeView.el, () => this.lifeView.close());
     this.bag = new Bag({ view: () => this.data?.growth ?? null, onClose: () => this.hud.closeOverlays() });
     this.hud.addOverlay(this.bag.el, () => this.bag.hide());
     this.settings = new SettingsPanel({
@@ -555,6 +591,7 @@ export class Game {
     this.updateSocialUi();
     this.announceCityEvent();
     this.payPet();
+    this.payLife();
     this.applyGear();
     const portrait = window.innerWidth / window.innerHeight < 0.8;
     const behind = this.player.heading + Math.PI;
@@ -727,9 +764,53 @@ export class Game {
   private applyGear(): void {
     const d = this.data;
     if (!d) return;
-    this.player.rideBoost = rideSpeed(d.shop);
+    // the car, when owned and chosen, is the ride (the fastest one)
+    const car = d.life.car?.drive;
+    this.player.rideBoost = car ? 1.9 : rideSpeed(d.shop);
     this.player.walkBoost = walkSpeed(d.shop);
-    this.gear.apply(d.shop.equipped);
+    this.gear.apply(car ? { ...d.shop.equipped, ride: 'car' } : d.shop.equipped);
+  }
+
+  /** Opens the home and car panel. */
+  openLife(tab: LifeTab): void {
+    if (!this.data) return;
+    this.hud.closeOverlays();
+    this.lifeView.show(tab);
+    this.cam.enabled = false;
+  }
+
+  /** Where the player's money stands today (cash, savings, shares, home and car, debts). */
+  worthNow(): Worth | null {
+    const d = this.data;
+    if (!d) return null;
+    const key = dayKey(new Date());
+    const savings = Math.floor(accrue(d.money.savings, key).savings.balance);
+    return worth(d.life, d.growth.coins, savings, portfolioValue(d.money.portfolio, key).value, this.today());
+  }
+
+  private noteWorth(): void {
+    const d = this.data;
+    const w = this.worthNow();
+    if (d && w) d.life = noteWorth(d.life, this.today(), w.net);
+  }
+
+  /** Home and car bills: once on each day the player plays (checked at start and when the date changes). */
+  private payLife(): void {
+    const d = this.data;
+    if (!d) return;
+    const day = this.today();
+    if (day === this.billDay) return;
+    this.billDay = day;
+    const r = payBills(d.life, d.growth.coins, day);
+    d.life = r.life;
+    d.growth.coins = r.wallet;
+    if (r.bills) {
+      this.hud.playerCard.update(d.character.nickname, d.character.topColor, d.growth);
+      const text = r.life.unpaid > 0 ? t('life.bills.short', { n: r.bills.total, left: r.life.unpaid }) : t('life.bills.toast', { n: r.bills.total });
+      window.setTimeout(() => this.hud.toast(`🏠 ${text}`, 4200), 8000);
+    }
+    this.noteWorth();
+    this.save(false);
   }
 
   /** Pays pet food since the last visit (once per session start). */
@@ -1033,6 +1114,11 @@ export class Game {
       this.player.frozen = blocked;
       this.player.update(dt, this.cam.state.yaw);
       this.gear.update(dt);
+      if ((this.billClock -= dt) <= 0) {
+        // a new day can start while playing
+        this.billClock = 30;
+        this.payLife();
+      }
       if ((this.goalClock -= dt) <= 0) {
         this.goalClock = 0.4;
         const g = this.goalTarget();
@@ -1257,6 +1343,7 @@ export class Game {
     if (spot.kind === 'game') return this.openShop();
     if (spot.kind === 'mission') return this.openMissions(n.room as MissionBuilding);
     if (spot.kind === 'portal') return this.enterRoom('skyLand');
+    if (spot.kind === 'life') return this.openLife('home');
     this.player.animator.play('think');
     this.showCard({ kind: 'info', kicker: t('spot.kicker'), title: t(`spot.${n.room}.${n.spot}.title`), body: t(`spot.${n.room}.${n.spot}.body`) });
   }
@@ -1449,6 +1536,30 @@ export class Game {
     }
     this.save(false);
     return { grade: g, firstPass: r.firstPass, xp: rules.xp, coins: rules.coins };
+  }
+
+  /** Today as a whole day number (decisions can be made once a day). */
+  private today(): number {
+    return dayIndex(dayKey(new Date()));
+  }
+
+  /** A money decision in a mission building: resolve it, pay the story coins and record it. */
+  private onDecision(b: MissionBuilding, k: number) {
+    const d = this.data;
+    const def = DECISION_BY_BUILDING[b];
+    if (!d || !def) return null;
+    const day = this.today();
+    const st = decisionState(d.missions.decisions, b, (d.missions.buildings[b]?.[0] ?? 0) > 0, day);
+    if (st.kind !== 'open') return null;
+    const result = resolveDecision(def, k, decisionSeed(day, def.id, d.missions.decisions[b]?.count ?? 0));
+    const r = recordDecision(d.missions.decisions, b, day);
+    d.missions.decisions = r.rec;
+    const xp = r.first ? def.xp : 0;
+    this.reward({ xp, coins: result.later });
+    if (r.first) this.learn([...def.learn]);
+    this.sound.play('coin');
+    this.save(false);
+    return { result, xp };
   }
 
   /** Marco's "run the pizzeria for a day" minigame. */

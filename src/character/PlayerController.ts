@@ -20,6 +20,8 @@ interface RideFit {
   deck: number;
   grip?: [number, number, number];
   rotY?: number;
+  /** Sideways shift of the model (a car whose driver's seat is off centre). */
+  x?: number;
   z?: number;
   /** Floats and bobs above the ground. */
   hover?: number;
@@ -46,6 +48,8 @@ const RIDES: Record<string, RideFit> = {
   // the kart's seat is low: sitting with the legs stretched to the pedals, hands on the wheel
   goKart: { file: 'models/meshy/shop/go_kart.glb', deck: 0, grip: [0.13, 0.6, 0.38], z: 0.35, seat: { y: 0.38, feet: [0.13, 0.3, 0.72], lean: 0.05, knees: 'up' } },
   hoverboard: { file: 'models/meshy/shop/hoverboard.glb', deck: 0.15, hover: 0.28 },
+  // the electric city car: the driver sits in the left seat, so the car is shifted to put that seat under the hips
+  car: { file: 'models/meshy/shop/car_city.glb', deck: 0, x: -0.36, grip: [0.17, 0.92, 0.42], z: 0.25, seat: { y: 0.58, feet: [0.13, 0.32, 0.85], lean: 0.02, knees: 'up' } },
 };
 
 const RADIUS = 0.42;
@@ -152,7 +156,10 @@ export class PlayerController {
     scene.updateMatrixWorld(true);
     scene.traverse((o) => (o as THREE.SkinnedMesh).skeleton?.update());
     const box = new THREE.Box3().setFromObject(scene, true);
-    this.hero = { scene, animator: new AvatarAnimator(scene, clips, walkSpeed * scale), height: box.max.y - this.object.position.y };
+    const animator = new AvatarAnimator(scene, clips, walkSpeed * scale);
+    // a calm head while walking, running and riding
+    animator.steady = 0.85;
+    this.hero = { scene, animator, height: box.max.y - this.object.position.y };
     this.showModel();
   }
 
@@ -209,8 +216,10 @@ export class PlayerController {
       let diff = want - this.heading;
       diff = Math.atan2(Math.sin(diff), Math.cos(diff));
       this.heading += diff * (1 - Math.exp(-dt * (this.riding ? 6 : 14)));
-      this.lean += (THREE.MathUtils.clamp(-diff * 0.8, -0.35, 0.35) - this.lean) * (1 - Math.exp(-dt * 6));
-    } else this.lean *= 1 - Math.min(1, dt * 4);
+      // lean into the turn only when rolling (no tilting while turning on the spot), eased in and out
+      const roll = THREE.MathUtils.clamp(this.speed / 3, 0, 1);
+      this.lean += (THREE.MathUtils.clamp(-diff * 0.7, -0.3, 0.3) * roll - this.lean) * (1 - Math.exp(-dt * 4));
+    } else this.lean *= 1 - Math.min(1, dt * 3);
 
     const before = this.position.clone();
     let nx = this.position.x + this.velocity.x * dt;
@@ -264,7 +273,6 @@ export class PlayerController {
     this.animator.update(dt, this.riding ? 0 : this.airborne ? Math.min(this.speed, 1) : this.speed);
     if (this.scooter) {
       for (const w of this.scooter.userData.wheels as THREE.Object3D[]) w.rotation.x += (moved / 0.09) * 0.5;
-      this.object.rotation.z = 0;
     }
     this.sync();
     if (this.riding) {
@@ -285,7 +293,8 @@ export class PlayerController {
     const helmet = useHero ? heroHelmet(this.hero!.scene) : rigHelmet(this.rig.head);
     this.object.updateMatrixWorld(true);
     if (helmet) {
-      helmet.visible = true;
+      // a bike helmet, not a car one: drivers ride bare-headed (with a seat belt)
+      helmet.visible = this.rideId !== 'car';
       wearHelmet(helmet);
     }
     const fit = RIDES[this.rideId];
@@ -308,7 +317,8 @@ export class PlayerController {
         ] as const) {
           if (pedals) tmpGrip.set(side * fx, pedals.y + Math.sin(turn + phase) * pedals.r, pedals.z + Math.cos(turn + phase) * pedals.r);
           else tmpGrip.set(side * fx, fy, fz);
-          this.object.localToWorld(tmpGrip);
+          // in the ride's own frame (it leans and bobs with the rider)
+          (this.scooter ?? this.object).localToWorld(tmpGrip);
           // knees bend up (kart) or forward over the pedals (bike)
           tmpPole.set(side * 0.15, fit.seat.knees === 'up' ? 1 : 0.4, 1).normalize().applyQuaternion(this.object.quaternion);
           reach(leg, tmpGrip, tmpPole);
@@ -324,7 +334,7 @@ export class PlayerController {
       [arms.left, grips[0], 1],
       [arms.right, grips[1], -1],
     ] as const) {
-      this.object.localToWorld(tmpGrip.copy(grip));
+      (this.scooter ?? this.object).localToWorld(tmpGrip.copy(grip));
       tmpPole.set(side * 0.7, -0.6, -0.4).applyQuaternion(this.object.quaternion);
       reach(arm, tmpGrip, tmpPole);
     }
@@ -404,7 +414,7 @@ export class PlayerController {
           const model = g.scene.clone(true);
           model.scale.setScalar(fit.scale ?? 1);
           model.rotation.y = fit.rotY ?? 0;
-          model.position.set(0, fit.hover ?? 0, fit.z ?? 0);
+          model.position.set(fit.x ?? 0, fit.hover ?? 0, fit.z ?? 0);
           model.traverse((o) => ((o as THREE.Mesh).isMesh ? (o.castShadow = true) : null));
           for (const c of [...holder.children]) c.visible = false;
           holder.add(model);
@@ -430,6 +440,28 @@ export class PlayerController {
     return this.hero && this.look.model !== 'custom' ? heroHead(this.hero.scene) : rigHead(this.rig.head);
   }
 
+  /**
+   * Moves the right hand toward a point near the head, after the animation:
+   * `at` is in the head frame's space relative to the mouth (0,0,0 is just in front of the mouth),
+   * `w` blends from the posed hand (0) to there (1). Used to hold and eat a treat.
+   */
+  handNearMouth(at: THREE.Vector3, w: number): void {
+    if (w <= 0.001 || this.riding) return;
+    const arms = this.hero && this.look.model !== 'custom' ? heroArms(this.hero.scene) : rigArms(this.rig);
+    const f = this.headFrame();
+    if (!arms || !f) return;
+    this.object.updateMatrixWorld(true);
+    const size = f.box.getSize(tmpGrip);
+    const c = f.box.getCenter(tmpPole);
+    const mouth = new THREE.Vector3(c.x, f.box.min.y + size.y * 0.25, f.box.max.z + 0.02).add(at);
+    f.root.localToWorld(mouth);
+    const hand = arms.right.hand(new THREE.Vector3());
+    hand.lerp(mouth, THREE.MathUtils.clamp(w, 0, 1));
+    // the elbow stays down and a little out to the right
+    const pole = new THREE.Vector3(-0.7, -1, -0.2).normalize().applyQuaternion(this.object.quaternion);
+    reach(arms.right, hand, pole);
+  }
+
   /** World position of the right hand (for holding a treat). */
   rightHand(out: THREE.Vector3): THREE.Vector3 {
     const arms = this.hero && this.look.model !== 'custom' ? heroArms(this.hero.scene) : rigArms(this.rig);
@@ -440,9 +472,11 @@ export class PlayerController {
   private sync(): void {
     this.object.position.copy(this.position);
     this.object.rotation.y = this.heading;
-    // lean into turns on the scooter
+    // lean into turns: rider and ride tilt together around the wheels (a kart stays flat, its driver sways a little)
     const body = this.hero && this.look.model !== 'custom' ? this.hero.scene : this.rig.root;
-    body.rotation.z = this.riding ? this.lean : 0;
+    const flat = this.rideId === 'goKart' || this.rideId === 'car';
+    body.rotation.z = this.riding ? this.lean * (flat ? 0.35 : 1) : 0;
+    if (this.scooter) this.scooter.rotation.z = this.riding && !flat ? this.lean : 0;
   }
 }
 

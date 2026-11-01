@@ -118,6 +118,12 @@ export class AvatarAnimator implements GestureAnimator {
   private tmpQ = new THREE.Quaternion();
   private tmpQ2 = new THREE.Quaternion();
   private axis = new THREE.Vector3();
+  /**
+   * How much the head keeps steady (0..1): the walk and run clips nod and
+   * sway the head; the player's hero keeps a calmer, smoothed head instead.
+   */
+  steady = 0;
+  private headSmooth: THREE.Quaternion | null = null;
 
   constructor(
     private root: THREE.Object3D,
@@ -195,8 +201,25 @@ export class AvatarAnimator implements GestureAnimator {
     }
     this.mixer.update(dt);
     this.root.updateMatrixWorld(true);
+    this.steadyHead(dt);
     this.layer();
     this.face(dt);
+  }
+
+  /** Smooths the head's turn (in the body's own space) so quick nods and sways from the clips fade out. */
+  private steadyHead(dt: number): void {
+    const head = this.bones.get('Head');
+    if (!head?.parent || this.steady <= 0) {
+      this.headSmooth = null;
+      return;
+    }
+    const rootQ = this.root.getWorldQuaternion(new THREE.Quaternion());
+    const now = head.getWorldQuaternion(this.tmpQ).premultiply(rootQ.clone().invert());
+    if (!this.headSmooth) this.headSmooth = now.clone();
+    this.headSmooth.slerp(now, 1 - Math.exp(-dt * 2));
+    const world = rootQ.multiply(now.slerp(this.headSmooth, this.steady));
+    head.quaternion.copy(head.parent.getWorldQuaternion(this.tmpQ2).invert().multiply(world));
+    head.updateMatrixWorld(true);
   }
 
   /** Rotates a bone about an axis given in the character's own space (x left, y up, z forward). */

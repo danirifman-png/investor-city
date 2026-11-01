@@ -10,8 +10,8 @@ export type InteriorId = 'pizzeria' | 'bank' | 'exchange' | 'academy' | 'newsTow
 
 export interface Hotspot {
   id: string;
-  /** clue: evidence for a mission; info: a short explanation; game: a minigame; mission: the building's missions; exit: the way out; portal: a magic portal to Cloud Land. */
-  kind: 'clue' | 'info' | 'game' | 'mission' | 'exit' | 'portal';
+  /** clue: evidence for a mission; info: a short explanation; game: a minigame; mission: the building's missions; exit: the way out; portal: a magic portal to Cloud Land; life: renting or buying a home. */
+  kind: 'clue' | 'info' | 'game' | 'mission' | 'exit' | 'portal' | 'life';
   x: number;
   z: number;
   /** Marker height (default 1.6). */
@@ -136,6 +136,7 @@ export const INTERIORS: Record<InteriorId, InteriorDef> = {
     hotspots: [
       { id: 'model', kind: 'info', x: -4.2, z: 1.2, y: 2.0 },
       { id: 'mission', kind: 'mission', x: 1.3, z: -1.8, y: 1.9 },
+      { id: 'homes', kind: 'life', x: 4.6, z: 0.6, y: 1.9 },
       { id: 'exit', kind: 'exit', x: 0, z: 4.4, y: 2.2 },
     ],
   },

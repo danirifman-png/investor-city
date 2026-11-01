@@ -127,7 +127,7 @@ export class Interiors {
     for (const s of def.hotspots) if (s.kind === 'portal') roomPortal(f, ctx, s.x, s.z, Math.PI / 2);
     const walls: Room['walls'] = [];
     if (!def.open) this.buildWalls(def, ox, oz, group, walls, collision);
-    const markers: Marker[] = def.hotspots.map((s) => new Marker(s.kind === 'mission' ? 'game' : s.kind === 'portal' ? 'door' : s.kind, ox + s.x, s.y ?? 1.6, oz + s.z, s.id));
+    const markers: Marker[] = def.hotspots.map((s) => new Marker(s.kind === 'mission' || s.kind === 'life' ? 'game' : s.kind === 'portal' ? 'door' : s.kind, ox + s.x, s.y ?? 1.6, oz + s.z, s.id));
     for (const m of markers) group.add(m.sprite);
 
     const staticMeshes = batch.build(materials.byKey);

@@ -3800,3 +3800,155 @@ kbd {
   margin-inline: auto;
   transform: none;
 }
+
+/* ---------------- money decisions (in the mission buildings) ---------------- */
+.mission-tier.decision-card {
+  border: 2px solid var(--gold);
+  background: linear-gradient(135deg, rgba(255, 207, 77, 0.18), rgba(63, 182, 232, 0.12));
+  margin-bottom: 10px;
+}
+.mission-tier.decision-card.locked,
+.mission-tier.decision-card.doneToday {
+  border-color: var(--panel-border);
+  background: rgba(255, 255, 255, 0.05);
+}
+.decision-pot {
+  font-weight: 600;
+}
+.decision-bars {
+  display: grid;
+  gap: 10px;
+  margin: 8px 0 4px;
+}
+.decision-row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.decision-value {
+  font-size: 1.1em;
+  color: var(--gold);
+}
+.decision-bar {
+  height: 14px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+.decision-fill {
+  height: 100%;
+  border-radius: 7px;
+  background: var(--accent);
+  transition: width 1.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.decision-fill.save {
+  background: #5fd38a;
+}
+.decision-fill.invest {
+  background: var(--gold);
+}
+.decision-fill.spend {
+  background: #ff8fb1;
+}
+.decision-fill.fixed {
+  background: #ffb347;
+}
+.decision-range {
+  display: block;
+  margin-top: 3px;
+  color: var(--muted);
+}
+.decision-lessons p {
+  margin: 6px 0;
+  line-height: 1.45;
+}
+.decision-gain strong {
+  color: #5fd38a;
+}
+.decision-cost strong {
+  color: #ffb347;
+}
+@media (prefers-reduced-motion: reduce) {
+  .decision-fill {
+    transition: none;
+  }
+}
+
+/* ---------------- net worth, home and car ---------------- */
+.worth-net strong {
+  font-size: 1.15em;
+}
+.worth-title {
+  display: block;
+  margin: 12px 0 6px;
+}
+.worth-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 110px;
+  padding: 6px 4px 0;
+  border-bottom: 1px solid var(--panel-border);
+}
+.worth-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  height: 100%;
+  gap: 3px;
+}
+.worth-col small {
+  font-size: 11px;
+  color: var(--muted);
+}
+.worth-bar {
+  width: 100%;
+  max-width: 34px;
+  border-radius: 6px 6px 0 0;
+  background: rgba(63, 182, 232, 0.55);
+}
+.worth-bar.today {
+  background: var(--gold);
+}
+.worth-bar.neg {
+  background: #ff8f8f;
+}
+.life-choice {
+  border: 2px solid var(--panel-border);
+  border-radius: 14px;
+  padding: 10px 12px;
+  margin: 10px 0;
+  background: rgba(255, 255, 255, 0.05);
+}
+.life-choice-title {
+  font-size: 1.05em;
+}
+.life-choice p {
+  margin: 6px 0;
+  line-height: 1.45;
+}
+.life-facts {
+  color: var(--muted);
+}
+.life-action {
+  margin-top: 8px;
+}
+.life-status {
+  border-inline-start: 5px solid var(--gold);
+  padding: 4px 10px;
+  margin: 10px 0;
+}
+.life-status .up {
+  color: #5fd38a;
+}
+.life-status .down {
+  color: #ff8f8f;
+}
+.store-panel .car-lot {
+  width: 100%;
+  margin: 4px 0 10px;
+}

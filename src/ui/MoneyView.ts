@@ -15,6 +15,7 @@ import {
   type CompanyId,
   type MoneyState,
 } from '../core/Money';
+import type { Worth } from '../core/Life';
 import { t } from '../i18n';
 import { h, iconButton } from './dom';
 
@@ -28,9 +29,11 @@ export interface MoneyHooks {
   onTab?(tab: MoneyTab): void;
   /** Opens the mall. */
   onStore?(): void;
+  /** Net worth today, the level, recent history and today's bills. */
+  worth?(): { worth: Worth; level: number; history: { day: number; net: number }[]; bills: number } | null;
 }
 
-export type MoneyTab = 'savings' | 'shares';
+export type MoneyTab = 'worth' | 'savings' | 'shares';
 
 const COMPANY_ICON: Record<CompanyId, string> = { marco: '🍕', wind: '🌬️', startup: '🚀', bank: '🏦', builder: '🏗️' };
 
@@ -93,7 +96,7 @@ export class MoneyView {
     const tabs = h(
       'div',
       { class: 'money-tabs', role: 'tablist' },
-      (['savings', 'shares'] as MoneyTab[]).map((id) =>
+      ((this.hooks.worth ? ['worth', 'savings', 'shares'] : ['savings', 'shares']) as MoneyTab[]).map((id) =>
         h('button', { class: 'money-tab', type: 'button', role: 'tab', 'aria-selected': String(id === this.tab), 'data-tab': id, onclick: () => ((this.tab = id), this.hooks.onTab?.(id), this.draw()) }, [t(`money.tab.${id}`)]),
       ),
     );
@@ -102,7 +105,7 @@ export class MoneyView {
       t('money.wallet', { n: v.wallet }),
       this.hooks.onStore ? h('button', { class: 'shop-price money-store-btn', type: 'button', onclick: () => this.hooks.onStore?.() }, [t('store.openShort')]) : null,
     ]);
-    const body = this.tab === 'savings' ? this.savings(v.wallet, v.money) : this.shares(v.wallet, v.money);
+    const body = this.tab === 'worth' ? this.worth() : this.tab === 'savings' ? this.savings(v.wallet, v.money) : this.shares(v.wallet, v.money);
     this.panel.replaceChildren(
       iconButton('close', t('hud.close'), () => this.close(), 'modal-close'),
       h('div', { class: 'card-kicker' }, [h('span', { class: 'shop-kicker-icon', 'aria-hidden': 'true' }, ['💰']), t('money.kicker')]),
@@ -117,6 +120,49 @@ export class MoneyView {
     const b = h('button', { class: cls, type: 'button', onclick: onClick }, [label]);
     b.disabled = disabled;
     return b;
+  }
+
+  /* ---------------------------- net worth ---------------------------- */
+
+  /** What I have and what I owe; things and debts from level 3, with the last days as bars. */
+  private worth(): HTMLElement[] {
+    const v = this.hooks.worth?.();
+    if (!v) return [];
+    const w = v.worth;
+    const full = v.level >= 3;
+    const coins = (n: number) => t('shop.coins', { n });
+    const table = h('div', { class: 'shop-table worth-table' }, [
+      this.line(t('worth.cash'), coins(w.cash)),
+      this.line(t('worth.savings'), coins(w.savings)),
+      this.line(t('worth.investments'), coins(w.investments)),
+      full ? this.line(t('worth.things'), coins(w.things)) : null,
+      full ? this.line(t('worth.owe'), w.owe ? `-${w.owe}` : '0', w.owe ? 'minus' : '') : null,
+      full ? this.line(t('worth.net'), coins(w.net), 'plus worth-net') : null,
+    ]);
+    const out: HTMLElement[] = [table];
+    if (full) out.push(h('p', { class: 'shop-note' }, [t('worth.netNote')]));
+    else out.push(h('p', { class: 'shop-note' }, [t('worth.lockedRows')]));
+    if (v.bills) out.push(h('p', { class: 'shop-tip' }, [t('worth.bills', { n: v.bills })]));
+    if (full) {
+      out.push(h('strong', { class: 'worth-title' }, [t('worth.history')]));
+      if (v.history.length < 2) out.push(h('p', { class: 'shop-note' }, [t('worth.historyEmpty')]));
+      else {
+        const top = Math.max(1, ...v.history.map((p) => Math.abs(p.net)));
+        out.push(
+          h(
+            'div',
+            { class: 'worth-chart', role: 'img', 'aria-label': v.history.map((p) => p.net).join(', ') },
+            v.history.map((p, i) =>
+              h('div', { class: 'worth-col' }, [
+                h('small', {}, [String(p.net)]),
+                h('div', { class: `worth-bar ${p.net < 0 ? 'neg' : ''} ${i === v.history.length - 1 ? 'today' : ''}`, style: `height:${Math.max(4, (Math.abs(p.net) / top) * 100)}%` }),
+              ]),
+            ),
+          ),
+        );
+      }
+    }
+    return out;
   }
 
   /* ------------------------------ savings ---------------------------- */

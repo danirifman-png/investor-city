@@ -5,3 +5,4 @@ artifact-build
 dist-dev
 .env
 *.log
+dist-dev2

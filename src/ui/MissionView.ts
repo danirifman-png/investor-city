@@ -1,5 +1,7 @@
 import { BUILDING_MISSIONS, TIER_RULES, type MissionBuilding } from '../content/missions/buildings';
 import { isRight, tierState, type Grade, type MissionRecord } from '../core/BuildingMissions';
+import type { DecisionResult, DecisionState } from '../core/Decisions';
+import type { DecisionDef } from '../content/decisions';
 import { t } from '../i18n';
 import { h, iconButton } from './dom';
 
@@ -9,6 +11,10 @@ export interface MissionHooks {
   /** A tier was finished; the game grades, records, rewards and saves. */
   onFinish(b: MissionBuilding, tier: number, answers: number[]): { grade: Grade; firstPass: boolean; xp: number; coins: number };
   onClose(): void;
+  /** The building's money decision, if any, and whether it can be made now. */
+  decision(b: MissionBuilding): DecisionState;
+  /** A decision was made; the game resolves it, rewards and saves. */
+  onDecision(b: MissionBuilding, option: number): { result: DecisionResult; xp: number } | null;
 }
 
 /**
@@ -87,9 +93,81 @@ export class MissionView {
         return btn;
       }),
     );
-    this.frame(t('bm.hostTitle', { name: t(`npc.${npc}.short`) }), [h('p', { class: 'card-body' }, [t(`bm.${b}.host`)]), list, h('p', { class: 'shop-note' }, [t('bm.levelNote', { n: level })])], [
+    this.frame(t('bm.hostTitle', { name: t(`npc.${npc}.short`) }), [h('p', { class: 'card-body' }, [t(`bm.${b}.host`)]), this.decisionCard(), list, h('p', { class: 'shop-note' }, [t('bm.levelNote', { n: level })])], [
       this.button(t('bm.close'), () => this.close(), false),
     ]);
+  }
+
+  /* ---------------------------- decisions ----------------------------- */
+
+  /** The decision of this building, above the tiers. */
+  private decisionCard(): HTMLElement | null {
+    const st = this.hooks.decision(this.b);
+    if (st.kind === 'none') return null;
+    const def = st.kind === 'locked' ? null : st.def;
+    const title = def ? t(`dec.${def.id}.title`) : t('dec.kicker');
+    const note = st.kind === 'open' ? t('dec.cardOpen') : st.kind === 'locked' ? t('dec.cardLocked') : t('dec.cardDone');
+    const btn = h('button', { class: `mission-tier decision-card ${st.kind}`, type: 'button', onclick: () => def && st.kind === 'open' && this.askDecision(def) }, [
+      h('span', { class: 'mission-tier-badge', 'aria-hidden': 'true' }, [st.kind === 'locked' ? '🔒' : st.kind === 'doneToday' ? '✓' : '⚖️']),
+      h('div', { class: 'mission-tier-text' }, [h('small', {}, [t('dec.kicker')]), h('strong', {}, [title]), h('span', {}, [note])]),
+    ]);
+    btn.disabled = st.kind !== 'open';
+    return btn;
+  }
+
+  private askDecision(def: DecisionDef): void {
+    const opts = def.options.map((_, k) => h('button', { class: 'mission-answer decision-option', type: 'button', 'data-option': k, onclick: () => this.decide(def, k) }, [t(`dec.${def.id}.o${k}`)]));
+    this.frame(t(`dec.${def.id}.title`), [
+      h('p', { class: 'card-body' }, [t(`dec.${def.id}.story`)]),
+      h('div', { class: 'card-note decision-pot' }, [`🪙 ${t('dec.pot', { n: def.pot })}`]),
+      h('p', { class: 'mission-q' }, [t('dec.choose')]),
+      h('div', { class: 'mission-answers' }, opts),
+    ], [this.button(t('dec.back'), () => this.drawTiers(), false)]);
+  }
+
+  private decide(def: DecisionDef, k: number): void {
+    const r = this.hooks.onDecision(this.b, k);
+    if (!r) return this.drawTiers();
+    this.showOutcome(def, k, r.result, r.xp, false);
+  }
+
+  /** The outcome: first what the coins are now, then (animated) a week later. */
+  private showOutcome(def: DecisionDef, k: number, res: DecisionResult, xp: number, later: boolean): void {
+    const top = Math.max(def.pot, ...res.parts.map((p) => Math.max(p.result, p.hi ?? 0)), 1);
+    const rows = res.parts.map((p) => {
+      const value = later ? p.result : p.kind === 'spend' ? p.amount : p.amount;
+      const fill = h('div', { class: `decision-fill ${p.kind}`, style: `width:${(Math.min(p.amount, top) / top) * 100}%` });
+      const row = h('div', { class: 'decision-row' }, [
+        h('div', { class: 'decision-row-head' }, [h('span', {}, [t(`dec.part.${p.kind}`)]), h('strong', { class: 'decision-value' }, [later && p.kind === 'spend' ? '🎉' : t('dec.coins', { n: value })])]),
+        h('div', { class: 'decision-bar' }, [fill]),
+        later && p.kind === 'invest' && p.lo !== undefined ? h('small', { class: 'decision-range' }, [t('dec.range', { lo: p.lo, hi: p.hi ?? 0 })]) : null,
+      ].filter((x): x is HTMLElement => !!x));
+      if (later) requestAnimationFrame(() => requestAnimationFrame(() => (fill.style.width = `${(Math.min(p.result, top) / top) * 100}%`)));
+      return row;
+    });
+    const key = `dec.${def.id}.o${k}`;
+    const body: (HTMLElement | null)[] = [
+      h('div', { class: 'mission-progress' }, [later ? t('dec.later') : t('dec.now')]),
+      h('p', { class: 'card-body' }, [t('dec.choice', { name: t(key) })]),
+      h('div', { class: 'decision-bars' }, rows),
+    ];
+    if (later) {
+      body.push(
+        h('div', { class: 'decision-lessons' }, [
+          h('p', { class: 'decision-gain' }, [h('strong', {}, [`${t('dec.gain')}: `]), t(`${key}.gain`)]),
+          h('p', { class: 'decision-cost' }, [h('strong', {}, [`${t('dec.cost')}: `]), t(`${key}.cost`)]),
+        ]),
+        h('div', { class: 'card-note' }, [`🪙 ${xp > 0 ? t('dec.gotXp', { coins: res.later, xp }) : t('dec.got', { coins: res.later })}${res.joy ? ` · ${t('dec.joy')}` : ''}`]),
+        res.parts.some((p) => p.kind === 'invest') ? h('p', { class: 'shop-note' }, [t('dec.luck')]) : null,
+      );
+    }
+    this.frame(
+      t(`dec.${def.id}.title`),
+      body,
+      later
+        ? [this.button(t('dec.back'), () => this.drawTiers()), this.button(t('dec.close'), () => this.close(), false)]
+        : [this.button(t('dec.toLater'), () => this.showOutcome(def, k, res, xp, true))],
+    );
   }
 
   /* ------------------------------ quiz ------------------------------- */

@@ -25,6 +25,9 @@ export const CONCEPT_IDS = [
   'reinvest',
   'shares',
   'diversification',
+  'depreciation',
+  'netWorth',
+  'mortgage',
 ] as const;
 
 export type ConceptId = (typeof CONCEPT_IDS)[number];

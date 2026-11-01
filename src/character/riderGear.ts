@@ -195,12 +195,12 @@ function fitHelmet(head: THREE.Object3D, root: THREE.Object3D, box: THREE.Box3):
   // the shell sits a little above the middle of the head and covers the hair
   // roomy enough to hold big hair: the shell reaches a little below its widest line at the sides and back
   const baseY = box.min.y + size.y * 0.5;
-  const helmet = buildHelmet((size.x / 2) * 1.2, (box.max.y - baseY) * 1.2, (size.z / 2) * 1.18);
+  const helmet = buildHelmet((size.x / 2) * 1.12, (box.max.y - baseY) * 1.12, (size.z / 2) * 1.1);
   // it lives on the body root (bone frames may carry scale and shear) and follows the head each frame
   root.add(helmet);
   root.updateWorldMatrix(true, true);
   const headAt = root.worldToLocal(head.getWorldPosition(new THREE.Vector3()));
-  helmet.userData.follow = { head, root, offset: new THREE.Vector3(c.x, baseY, c.z).sub(headAt) };
+  helmet.userData.follow = { head, root, offset: new THREE.Vector3(c.x, baseY, c.z).sub(headAt), rest: headTurn(head, root, new THREE.Quaternion()).invert(), turn: true };
   helmet.visible = false;
   head.userData.helmet = helmet;
   wearHelmet(helmet);
@@ -241,12 +241,15 @@ export function rigHead(head: THREE.Object3D): HeadFrame {
   return (head.userData.frame = { head, root, box });
 }
 
-/** Puts an object on the body root so that it follows the head (see `wearHelmet`). `at` is in root space. */
-export function followHead(obj: THREE.Object3D, f: HeadFrame, at: THREE.Vector3): void {
+/**
+ * Puts an object on the body root so that it follows the head (see `wearHelmet`). `at` is in root space.
+ * `turn`: it also tilts with the head (hats, glasses); a backpack only follows its position.
+ */
+export function followHead(obj: THREE.Object3D, f: HeadFrame, at: THREE.Vector3, turn = true): void {
   f.root.add(obj);
   f.root.updateWorldMatrix(true, true);
   const headAt = f.root.worldToLocal(f.head.getWorldPosition(new THREE.Vector3()));
-  obj.userData.follow = { head: f.head, root: f.root, offset: at.clone().sub(headAt) };
+  obj.userData.follow = { head: f.head, root: f.root, offset: at.clone().sub(headAt), rest: headTurn(f.head, f.root, new THREE.Quaternion()).invert(), turn };
   obj.traverse((o) => (o.userData.worn = true));
   wearHelmet(obj);
 }
@@ -267,11 +270,34 @@ export function rigHelmet(head: THREE.Object3D): THREE.Object3D {
 }
 
 const tmpHead = new THREE.Vector3();
+const tmpOff = new THREE.Vector3();
+const tmpQa = new THREE.Quaternion();
+const tmpQb = new THREE.Quaternion();
 
-/** Keeps a helmet on its head (call after the animation has posed the body). */
+/** The head's orientation in the body root's space. */
+function headTurn(head: THREE.Object3D, root: THREE.Object3D, out: THREE.Quaternion): THREE.Quaternion {
+  root.getWorldQuaternion(tmpQb).invert();
+  return head.getWorldQuaternion(out).premultiply(tmpQb);
+}
+
+interface Follow {
+  head: THREE.Object3D;
+  root: THREE.Object3D;
+  offset: THREE.Vector3;
+  /** Inverse of the head's orientation when it was fitted. */
+  rest: THREE.Quaternion;
+  turn: boolean;
+}
+
+/** Keeps a helmet (or hat) on its head: it moves and tilts with it (call after the animation has posed the body). */
 export function wearHelmet(helmet: THREE.Object3D): void {
-  const f = helmet.userData.follow as { head: THREE.Object3D; root: THREE.Object3D; offset: THREE.Vector3 } | undefined;
+  const f = helmet.userData.follow as Follow | undefined;
   if (!f) return;
   f.root.worldToLocal(f.head.getWorldPosition(tmpHead));
-  helmet.position.copy(tmpHead).add(f.offset);
+  if (f.turn) {
+    // how far the head has turned since the fit, applied to the hat around the head bone
+    const d = headTurn(f.head, f.root, tmpQa).multiply(f.rest);
+    helmet.quaternion.copy(d);
+    helmet.position.copy(tmpHead).add(tmpOff.copy(f.offset).applyQuaternion(d));
+  } else helmet.position.copy(tmpHead).add(f.offset);
 }

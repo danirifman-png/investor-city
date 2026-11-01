@@ -1,4 +1,6 @@
 import { sanitizeMissionRecord, type MissionRecord } from './BuildingMissions';
+import { sanitizeDecisions, type DecisionRecord } from './Decisions';
+import { newLife, sanitizeLife, type LifeState } from './Life';
 import { newMoney, sanitizeMoney, type MoneyState } from './Money';
 import { newShop, sanitizeShop, type ShopState } from './Shop';
 import { newBusinessRecord, sanitizeBusinessRecord, type BusinessRecord } from './Business';
@@ -55,7 +57,7 @@ export interface SaveData {
   /** Relationships with the characters, story flags and errands. */
   social: SocialState;
   /** Mission progress (phase 4: Marco's branch decision). */
-  missions: { branch: BranchState; pizzaShop: ShopRecord; business: BusinessRecord; buildings: MissionRecord };
+  missions: { branch: BranchState; pizzaShop: ShopRecord; business: BusinessRecord; buildings: MissionRecord; decisions: DecisionRecord };
   /** Golden coins and chests picked up (ids from world/Collectibles). */
   found: string[];
   /** Concepts collected in the notebook and "Did you know?" discoveries found. */
@@ -66,6 +68,8 @@ export interface SaveData {
   money: MoneyState;
   /** Shop items owned and worn (added without a version bump: missing means empty). */
   shop: ShopState;
+  /** Home, car, bills and the net worth history (added without a version bump: missing means none). */
+  life: LifeState;
 }
 
 export interface StorageLike {
@@ -86,10 +90,11 @@ export function newSave(character: CharacterLook, now = Date.now()): SaveData {
     settings: defaultSettings(),
     progress: { visited: [], metresWalked: 0, playSeconds: 0 },
     social: newSocial(),
-    missions: { branch: newBranch(), pizzaShop: newShopRecord(), business: newBusinessRecord(), buildings: {} },
+    missions: { branch: newBranch(), pizzaShop: newShopRecord(), business: newBusinessRecord(), buildings: {}, decisions: {} },
     found: [],
     money: newMoney(),
     shop: newShop(),
+    life: newLife(),
     learning: { concepts: [], curiosities: [] },
     growth: newProgression(),
   };
@@ -131,9 +136,10 @@ export function migrate(raw: unknown): SaveData | null {
   base.social = sanitizeSocial(src.social);
   // v1/v2 saves have neither; the sanitizers start them fresh
   const missions = (src.missions ?? {}) as Record<string, unknown>;
-  base.missions = { branch: sanitizeBranch(missions.branch), pizzaShop: sanitizeShopRecord(missions.pizzaShop), business: sanitizeBusinessRecord(missions.business), buildings: sanitizeMissionRecord(missions.buildings) };
+  base.missions = { branch: sanitizeBranch(missions.branch), pizzaShop: sanitizeShopRecord(missions.pizzaShop), business: sanitizeBusinessRecord(missions.business), buildings: sanitizeMissionRecord(missions.buildings), decisions: sanitizeDecisions(missions.decisions) };
   base.money = sanitizeMoney(src.money);
   base.shop = sanitizeShop(src.shop);
+  base.life = sanitizeLife(src.life);
   base.found = Array.isArray(src.found) ? [...new Set(src.found.filter((x): x is string => typeof x === 'string' && x.length < 40))].slice(0, 400) : [];
   const learning = (src.learning ?? {}) as Record<string, unknown>;
   const pick = (list: unknown, allowed: readonly string[]) =>

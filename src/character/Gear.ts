@@ -49,7 +49,31 @@ const TREATS: Record<string, string> = {
   popcorn: 'popcorn_box.glb',
   pizzaSlice: 'pizza_slice.glb',
 };
-const HOLD_SECONDS = 4;
+/** Eating a treat: it is held up for a moment, then taken in bites (seconds from the start). */
+const BITES = [1.3, 3.1, 4.9, 6.7];
+const BITE_TIME = 1.0;
+const EAT_SECONDS = BITES[BITES.length - 1] + BITE_TIME;
+/** Where the hand holds the treat, relative to the mouth: in front of the chest, then up at the mouth. */
+const HOLD_AT = new THREE.Vector3(-0.1, -0.32, 0.16);
+const BITE_AT = new THREE.Vector3(-0.02, -0.13, 0.07);
+
+/** How high the hand is raised during a bite (0..1, eased up, a short pause, eased down). */
+export function biteLift(t: number): number {
+  for (const b of BITES) {
+    const u = (t - b) / BITE_TIME;
+    if (u < 0 || u > 1) continue;
+    const ease = (x: number) => x * x * (3 - 2 * x);
+    return u < 0.35 ? ease(u / 0.35) : u < 0.65 ? 1 : ease((1 - u) / 0.35);
+  }
+  return 0;
+}
+
+/** How much of the treat is left at time t (1 whole, 0 eaten): a piece goes with each bite. */
+export function treatLeft(t: number): number {
+  let n = 0;
+  for (const b of BITES) if (t >= b + BITE_TIME * 0.5) n++;
+  return 1 - n / BITES.length;
+}
 
 const v = new THREE.Vector3();
 const v2 = new THREE.Vector3();
@@ -91,7 +115,7 @@ function fitWorn(raw: THREE.Object3D, fit: WearFit, f: HeadFrame): THREE.Object3
     at.y = f.box.min.y - ms.y * s * 1.05;
     at.z = f.box.min.z - (ms.z * s) * 0.15;
   }
-  followHead(wrap, f, at);
+  followHead(wrap, f, at, fit.place !== 'back');
   return wrap;
 }
 
@@ -102,7 +126,7 @@ export class Gear {
   private equipped: Partial<Record<Slot, string>> = {};
   private pet: { id: string; obj: THREE.Object3D; hover: boolean; t: number } | null = null;
   private balloon: { obj: THREE.Object3D; line: THREE.Line; t: number } | null = null;
-  private treat: { obj: THREE.Object3D; left: number } | null = null;
+  private treat: { obj: THREE.Object3D; t: number; size: number; bites: number } | null = null;
   /** Bumped on every apply so that late model loads for old choices are dropped. */
   private gen = 0;
 
@@ -182,7 +206,7 @@ export class Gear {
     this.player.object.localToWorld(holder.position.set(-0.4, 1.6, -0.4));
   }
 
-  /** Holds a treat for a few seconds, then it is eaten. */
+  /** Holds a treat and eats it in a few bites (waits while a window is open). */
   holdTreat(id: string): void {
     this.treat?.obj.removeFromParent();
     this.treat = null;
@@ -196,7 +220,7 @@ export class Gear {
       holder.add(apple);
     } else return;
     this.group.add(holder);
-    this.treat = { obj: holder, left: HOLD_SECONDS };
+    this.treat = { obj: holder, t: 0, size: 1.6, bites: 0 };
   }
 
   /** Call after the player has moved and been posed. */
@@ -248,14 +272,30 @@ export class Gear {
     }
     if (this.treat) {
       const tr = this.treat;
-      tr.left -= dt;
+      // the shop window may still be open: start eating once the player is back in the city
+      if (!p.frozen) tr.t += dt;
+      const t = tr.t;
+      // raise the hand to hold it in front, then up to the mouth for each bite
+      const hold = Math.min(1, t / 0.4) * Math.min(1, Math.max(0, (EAT_SECONDS + 0.4 - t) / 0.4));
+      const lift = biteLift(t);
+      v.copy(HOLD_AT).lerp(BITE_AT, lift);
+      p.handNearMouth(v, hold);
       p.rightHand(tr.obj.position);
       tr.obj.rotation.y = yaw;
-      // shrinks away in the last half second (eaten)
-      tr.obj.scale.setScalar(1.6 * Math.min(1, Math.max(0, tr.left / 0.5)));
-      if (tr.left <= 0) {
+      // a piece goes with every bite; chew (the mouth moves) after each one
+      const left = treatLeft(t);
+      const bites = Math.round((1 - left) * BITES.length);
+      if (bites > tr.bites) {
+        tr.bites = bites;
+        p.animator.speak?.(0.7);
+      }
+      const want = tr.size * (left > 0 ? 0.45 + 0.55 * left : 0);
+      const now = tr.obj.scale.x;
+      tr.obj.scale.setScalar(Math.max(0.0001, now + (want - now) * Math.min(1, dt * 10)));
+      if (t >= EAT_SECONDS + 0.4) {
         tr.obj.removeFromParent();
         this.treat = null;
+        p.animator.play('happy');
       }
     }
   }
