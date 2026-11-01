@@ -582,8 +582,34 @@ export class Hud {
     this.tracker.classList.toggle('ready', ready);
     this.tracker.replaceChildren(
       h('span', { class: 'tracker-icon', 'aria-hidden': 'true' }, [ready ? '✓' : '!']),
-      h('span', { class: 'tracker-text' }, [h('small', {}, [t('hud.currentQuest')]), h('strong', {}, [title]), h('span', {}, [goal])]),
+      h('span', { class: 'tracker-text' }, [h('small', {}, [t('hud.currentQuest')]), h('strong', {}, [title]), h('span', { class: 'tracker-goal' }, [goal])]),
+      this.trackerDist,
     );
+  }
+
+  private trackerDist = h('span', { class: 'tracker-dist', hidden: true });
+  private goalArrow = h('div', { class: 'goal-arrow', hidden: true, 'aria-hidden': 'true' }, [h('span', { class: 'goal-arrow-tip' }, ['➤'])]);
+
+  /** An arrow at the screen edge toward a goal that is off screen (null hides it). Angle in radians, 0 = right. */
+  setGoalArrow(at: { x: number; y: number; angle: number } | null): void {
+    if (!at) {
+      this.goalArrow.hidden = true;
+      return;
+    }
+    if (!this.goalArrow.isConnected) this.root.append(this.goalArrow);
+    this.goalArrow.hidden = false;
+    this.goalArrow.style.transform = `translate(${at.x.toFixed(0)}px, ${at.y.toFixed(0)}px) translate(-50%, -50%) rotate(${at.angle.toFixed(3)}rad)`;
+  }
+
+  /** How far the tracked goal is, in metres (null hides it). Rounded so it does not flicker. */
+  setTrackerDistance(m: number | null): void {
+    if (m === null || !Number.isFinite(m)) {
+      this.trackerDist.hidden = true;
+      return;
+    }
+    const text = m < 6 ? t('hud.here') : t('hud.metres', { n: m < 100 ? Math.round(m / 5) * 5 : Math.round(m / 10) * 10 });
+    if (this.trackerDist.textContent !== text) this.trackerDist.textContent = text;
+    this.trackerDist.hidden = false;
   }
 
 

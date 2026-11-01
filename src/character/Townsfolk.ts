@@ -31,7 +31,19 @@ interface Walker {
   object: THREE.Object3D | null;
   animator: AvatarAnimator | null;
   height: number;
+  /** How far the model's feet sit below its origin (lifted so they stand on the ground). */
+  foot: number;
+  y: number;
+  /** Chatting with another walker: who, and seconds left. */
+  chat: { with: Walker; left: number; next: number } | null;
+  /** Seconds before this person may stop for a chat again. */
+  chatCool: number;
 }
+
+/** What people do when they stop for a moment (on top of their idle). */
+const PAUSE_MOVES = ['think', 'nod', 'happy', 'surprised', 'talk'] as const;
+/** What two people do while chatting, taking turns. */
+const CHAT_MOVES = ['talk', 'laugh', 'nod', 'happy', 'talk', 'shake'] as const;
 
 /** A point on a loop's edge and the heading of walking along it (s in 0..1). */
 function along(r: Rect, s: number): { x: number; z: number; heading: number } {
@@ -53,7 +65,12 @@ export class Townsfolk {
   private rng = mulberry32(777);
 
   /** `plaza` loops come first so a few people are always near the start. */
-  constructor(plaza: Rect[], loops: Rect[]) {
+  constructor(
+    plaza: Rect[],
+    loops: Rect[],
+    /** Height of the walkable ground at a point (plaza steps, podiums). */
+    private ground: (x: number, z: number, feet: number) => number = () => 0,
+  ) {
     this.group.name = 'townsfolk';
     // three around the plaza, the rest spread evenly over the city's blocks
     const spread = loops.filter((_, i) => i % Math.max(1, Math.floor(loops.length / (TOWNSFOLK.length - plaza.length))) === 0);
@@ -77,15 +94,24 @@ export class Townsfolk {
         object: null,
         animator: null,
         height: 1.75,
+        foot: 0,
+        y: 0,
+        chat: null,
+        chatCool: 10 + this.rng() * 20,
       };
       this.walkers.push(w);
       void loadAvatar(def.model)
         .then(({ scene, clips }) => {
           w.object = scene;
-          w.animator = new AvatarAnimator(scene, clips, 1.3);
-          const box = new THREE.Box3().setFromObject(scene);
+          w.animator = new AvatarAnimator(scene, clips, 1.3, true);
+          // measured in the posed (skinned) shape, so the feet land on the ground
+          scene.updateMatrixWorld(true);
+          scene.traverse((o) => (o as THREE.SkinnedMesh).skeleton?.update());
+          const box = new THREE.Box3().setFromObject(scene, true);
           w.height = Math.max(1.2, box.max.y - box.min.y);
-          scene.position.set(w.x, 0, w.z);
+          w.foot = -box.min.y;
+          w.y = Math.min(0.45, this.ground(w.x, w.z, 0.6));
+          scene.position.set(w.x, w.y + w.foot, w.z);
           this.group.add(scene);
         })
         .catch((err) => console.warn(`${def.model} failed to load`, err));
@@ -126,6 +152,20 @@ export class Townsfolk {
           best = w;
           bestD = dp;
         }
+      } else if (w.chat) {
+        // chatting: face each other and take turns
+        const c = w.chat;
+        c.left -= dt;
+        want = Math.atan2(c.with.x - w.x, c.with.z - w.z);
+        if ((c.next -= dt) <= 0 && !a.playing) {
+          a.play(CHAT_MOVES[Math.floor(this.rng() * CHAT_MOVES.length)]);
+          c.next = 2.2 + this.rng() * 1.5;
+        }
+        if (c.left <= 0) {
+          w.chat = null;
+          w.chatCool = 25 + this.rng() * 25;
+          w.dir = w.dir === 1 ? -1 : 1;
+        }
       } else if (w.pause > 0) {
         w.pause -= dt;
       } else {
@@ -142,18 +182,24 @@ export class Townsfolk {
           want = w.dir === 1 ? p.heading : p.heading + Math.PI;
           w.nextPause -= dt;
           if (w.nextPause <= 0) {
-            w.pause = 2 + this.rng() * 4;
+            // stop for a moment: look around, think, nod, smile
+            w.pause = 2.5 + this.rng() * 3.5;
             w.nextPause = 10 + this.rng() * 18;
+            a.play(PAUSE_MOVES[Math.floor(this.rng() * PAUSE_MOVES.length)]);
+            w.heading += (this.rng() - 0.5) * 2.4;
           }
         }
       }
       const diff = Math.atan2(Math.sin(want - w.heading), Math.cos(want - w.heading));
       w.heading += diff * (1 - Math.exp(-dt * 6));
+      w.chatCool = Math.max(0, w.chatCool - dt);
       if (!o.visible) continue;
-      o.position.set(w.x, 0, w.z);
+      w.y += (Math.min(0.45, this.ground(w.x, w.z, 0.6)) - w.y) * Math.min(1, dt * 10);
+      o.position.set(w.x, w.y + w.foot, w.z);
       o.rotation.y = w.heading;
       a.update(dt, speed);
     }
+    this.startChats(player);
     // one person at a time talks to the player
     if (best !== this.speaker) {
       if (this.speaker) this.speaker.quiet = 8;
@@ -165,6 +211,25 @@ export class Townsfolk {
       if (this.speakTime > TALK_SECONDS) {
         best.quiet = 12;
         this.speaker = null;
+      }
+    }
+  }
+
+  /** Two people who meet on their walk stop and chat for a while. */
+  private startChats(player: THREE.Vector3 | null): void {
+    for (let i = 0; i < this.walkers.length; i++) {
+      const a = this.walkers[i];
+      if (a.chat || a.chatCool > 0 || !a.object) continue;
+      for (let j = i + 1; j < this.walkers.length; j++) {
+        const b = this.walkers[j];
+        if (b.chat || b.chatCool > 0 || !b.object) continue;
+        if (Math.hypot(a.x - b.x, a.z - b.z) > 2.4) continue;
+        // not while the player is standing right there (they greet the player instead)
+        if (player && Math.min(Math.hypot(player.x - a.x, player.z - a.z), Math.hypot(player.x - b.x, player.z - b.z)) < GREET_RANGE + 1) continue;
+        const left = 6 + this.rng() * 5;
+        a.chat = { with: b, left, next: 0 };
+        b.chat = { with: a, left, next: 1.2 };
+        break;
       }
     }
   }

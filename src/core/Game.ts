@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Sound } from './Sound';
 import { Gear } from '../character/Gear';
+import { Guide } from '../world/Guide';
 import { Townsfolk } from '../character/Townsfolk';
 import { Fireworks } from '../world/Fireworks';
 import { ShopView } from '../ui/ShopView';
@@ -200,6 +201,11 @@ export class Game {
   readonly store: ShopView;
   /** Worn things and the pet, drawn on the hero (see world/Gear). */
   private gear: Gear;
+  /** Places the tracked goal points to (live vectors for characters). */
+  private goalTargets: { x: number; z: number }[] = [];
+  private goalClock = 0;
+  private guide: Guide;
+  private goalV = new THREE.Vector3();
   private town: Townsfolk;
   private fw = new Fireworks();
   readonly missionsView: MissionView;
@@ -242,7 +248,9 @@ export class Game {
     this.npcs = new Npcs(this.city.pois, this.city.collision);
     this.scene.add(this.npcs.group);
     this.extras = new PlazaExtras(this.city.collision);
-    this.town = new Townsfolk(PLAZA_LOOPS, this.city.walkLoops);
+    this.town = new Townsfolk(PLAZA_LOOPS, this.city.walkLoops, (x, z, feet) => this.city.collision.groundHeight(x, z, feet));
+    this.guide = new Guide((x, z) => this.city.collision.groundHeight(x, z, this.player.position.y + 0.3));
+    this.scene.add(this.guide.group);
     this.scene.add(this.town.group);
     this.scene.add(this.extras.group);
     void this.npcs.loadAvatars(vivid).then((ids) => (this.avatars = ids));
@@ -958,8 +966,15 @@ export class Game {
       } else if (id === 'maya' && !hasFlag(s, 'nina.toldMaya')) targets.push(this.npcs.get('nina').position);
       else if (id === 'leo' && !hasFlag(s, 'marco.rumorChecked')) targets.push(this.npcs.get('marco').position);
     }
-    targets.push(...this.missionTargets(), ...this.questTargets());
+    const missionTargets = this.missionTargets();
+    const questTargets = this.questTargets();
+    targets.push(...missionTargets, ...questTargets);
     this.hud.setMapTargets(targets);
+    // the one goal the tracker talks about (the guide and the distance follow it)
+    if (this.trackerKind === 'quest') this.goalTargets = questTargets;
+    else if (this.trackerKind === 'mission') this.goalTargets = missionTargets;
+    else if (focus) this.goalTargets = this.errandTargets(focus);
+    else this.goalTargets = [];
     this.updateProgressUi();
   }
 
@@ -1018,6 +1033,15 @@ export class Game {
       this.player.frozen = blocked;
       this.player.update(dt, this.cam.state.yaw);
       this.gear.update(dt);
+      if ((this.goalClock -= dt) <= 0) {
+        this.goalClock = 0.4;
+        const g = this.goalTarget();
+        this.hud.setTrackerDistance(g ? Math.hypot(g.x - this.player.position.x, g.z - this.player.position.z) : null);
+        this.guide.setTarget(g);
+      }
+      const guideOn = this.data?.settings.guide !== false && !this.conv;
+      this.guide.update(dt, this.player.position, guideOn);
+      this.updateGoalArrow(guideOn);
       this.nearNpc = this.conv ? null : this.npcs.nearest(this.player.position, TALK_RANGE);
       this.nearThing = this.conv ? null : this.findNearThing();
       // characters come first, unless the player stands right at a door or marker
@@ -1800,6 +1824,59 @@ export class Game {
     if (b.status === 'active') return t(`mission.step.${currentStep(b, d.social.flags)}`);
     if (b.status === 'done' && !hasFlag(d.social, 'branch.thanked')) return t('mission.thanks');
     return null;
+  }
+
+  /** Where one character's errand leads now (the character when it is ready to hand in). */
+  private errandTargets(id: NpcId): { x: number; z: number }[] {
+    const s = this.data?.social;
+    if (!s) return [];
+    const state = s.errands[id];
+    if (state === 'ready') return [this.npcs.get(id).position];
+    if (state !== 'active') return [];
+    const goal = ERRANDS[id].goal;
+    if (goal.kind === 'visit') {
+      const poi = this.city.pois.find((p) => p.key === goal.poi);
+      return poi ? [{ x: poi.x, z: poi.z }] : [];
+    }
+    if (id === 'maya' && !hasFlag(s, 'nina.toldMaya')) return [this.npcs.get('nina').position];
+    if (id === 'leo' && !hasFlag(s, 'marco.rumorChecked')) return [this.npcs.get('marco').position];
+    return [];
+  }
+
+  /** An arrow at the screen edge while the goal is off screen. */
+  private updateGoalArrow(on: boolean): void {
+    const g = on ? this.goalTarget() : null;
+    if (!g || Math.hypot(g.x - this.player.position.x, g.z - this.player.position.z) < 6) return this.hud.setGoalArrow(null);
+    const v = this.goalV.set(g.x, this.player.position.y + 1.5, g.z).project(this.cam.camera);
+    const behind = v.z > 1;
+    const w = window.innerWidth;
+    const hgt = window.innerHeight;
+    if (!behind && Math.abs(v.x) < 0.9 && Math.abs(v.y) < 0.85) return this.hud.setGoalArrow(null);
+    // direction from the screen centre; behind the camera the projection flips
+    let dx = behind ? -v.x : v.x;
+    let dy = behind ? v.y : -v.y;
+    if (Math.hypot(dx, dy) < 1e-3) dy = 1;
+    const m = 44;
+    const k = Math.min((w / 2 - m) / Math.max(Math.abs(dx) * (w / 2), 1e-3), (hgt / 2 - m) / Math.max(Math.abs(dy) * (hgt / 2), 1e-3));
+    dx *= (w / 2) * k;
+    dy *= (hgt / 2) * k;
+    this.hud.setGoalArrow({ x: w / 2 + dx, y: hgt / 2 + dy, angle: Math.atan2(dy, dx) });
+  }
+
+  /** The nearest place the tracked goal points to, or null. */
+  goalTarget(): { x: number; z: number } | null {
+    if (this.interiors.current) return null;
+    const p = this.player.position;
+    let best: { x: number; z: number } | null = null;
+    let bd = Infinity;
+    for (const g of this.goalTargets) {
+      const d = Math.hypot(g.x - p.x, g.z - p.z);
+      if (d < bd) {
+        bd = d;
+        best = g;
+      }
+    }
+    return best;
   }
 
   private missionTargets(): { x: number; z: number }[] {

@@ -112,14 +112,14 @@ describe('progression save', () => {
     const data = newSave({ ...DEFAULT_LOOK, nickname: 'דני' });
     grant(data.growth, { xp: 130, coins: 12, items: ['mentorBadge'], unlock: ['trail'] });
     data.growth.quests.mentor = { status: 'done', step: 3, seen: [] };
-    data.settings = { night: true, bubbles: false, calm: true, camSpeed: 1.5 };
+    data.settings = { night: true, bubbles: false, calm: true, camSpeed: 1.5, guide: false };
     const back = migrate(JSON.parse(JSON.stringify(data)))!;
     expect(back.growth).toEqual(data.growth);
     expect(back.settings).toEqual(data.settings);
     const v3 = { ...JSON.parse(JSON.stringify(data)), version: 3, growth: undefined, settings: { night: true } };
     const old = migrate(v3)!;
     expect(old.growth).toEqual(newProgression());
-    expect(old.settings).toEqual({ night: true, bubbles: true, calm: false, camSpeed: 1 });
+    expect(old.settings).toEqual({ night: true, bubbles: true, calm: false, camSpeed: 1, guide: true });
   });
 
   it('drops unknown quests, items and areas and clamps numbers', () => {

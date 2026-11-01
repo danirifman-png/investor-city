@@ -21,7 +21,7 @@ export const TOWNSFOLK: TownsfolkDef[] = [
   { id: 'nurse', model: 'models/meshy/townsfolk/nurse.glb', pace: 1.25 },
   { id: 'gardener', model: 'models/meshy/townsfolk/gardener.glb', pace: 1.0 },
   { id: 'teen_girl', model: 'models/meshy/townsfolk/teen_girl.glb', pace: 1.3 },
-  { id: 'jogger', model: 'models/meshy/townsfolk/jogger.glb', pace: 1.4 },
+  { id: 'jogger', model: 'models/meshy/townsfolk/jogger.glb', pace: 3.1 },
   { id: 'musician', model: 'models/meshy/townsfolk/musician.glb', pace: 1.05, radius: 0.55 },
 ];
 

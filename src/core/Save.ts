@@ -32,10 +32,12 @@ export interface Settings {
   calm: boolean;
   /** Camera turn speed multiplier (0.5 to 2). */
   camSpeed: number;
+  /** The glowing footprints and beacon that lead to the current goal. */
+  guide: boolean;
 }
 
 export function defaultSettings(): Settings {
-  return { night: false, bubbles: true, calm: false, camSpeed: 1 };
+  return { night: false, bubbles: true, calm: false, camSpeed: 1, guide: true };
 }
 
 export interface SaveData {
@@ -119,6 +121,7 @@ export function migrate(raw: unknown): SaveData | null {
     bubbles: settings.bubbles !== false,
     calm: settings.calm === true,
     camSpeed: num(settings.camSpeed, 1, 0.5, 2),
+    guide: settings.guide !== false,
   };
   base.progress = {
     visited: Array.isArray(progress.visited) ? [...new Set(progress.visited.filter((z): z is ZoneId => ZONE_IDS.includes(z as ZoneId)))] : [],

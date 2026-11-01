@@ -272,7 +272,7 @@ export class SettingsPanel {
   private render(): void {
     const s = this.o.view();
     if (!s) return;
-    const toggle = (key: 'night' | 'bubbles' | 'calm') => {
+    const toggle = (key: 'night' | 'bubbles' | 'calm' | 'guide') => {
       const input = h('input', { type: 'checkbox', 'data-setting': key }) as HTMLInputElement;
       input.checked = s[key];
       input.addEventListener('change', () => this.o.onChange({ [key]: input.checked }));
@@ -290,6 +290,7 @@ export class SettingsPanel {
     this.body.replaceChildren(
       toggle('night'),
       toggle('bubbles'),
+      toggle('guide'),
       toggle('calm'),
       h('label', { class: 'set-row set-range' }, [h('span', {}, [t('settings.camSpeed')]), speed]),
       h('p', { class: 'set-quality' }, [t('settings.quality', { q: t(this.o.quality === 'high' ? 'settings.qualityHigh' : 'settings.qualityLow') }), h('br'), h('small', {}, [t('settings.qualityHint')])]),

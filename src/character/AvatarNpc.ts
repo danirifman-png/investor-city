@@ -109,6 +109,7 @@ export class AvatarAnimator implements GestureAnimator {
   private walk: THREE.AnimationAction;
   private clipActions = new Map<string, THREE.AnimationAction>();
   private oneShot: { kind: OneShot; t: number; dur: number } | null = null;
+  private run: THREE.AnimationAction | null = null;
   private speed = 0;
   private time = 0;
   private speaking = 0;
@@ -122,6 +123,8 @@ export class AvatarAnimator implements GestureAnimator {
     private root: THREE.Object3D,
     clips: THREE.AnimationClip[],
     private walkSpeed = WALK_CLIP_SPEED,
+    /** Blend into the model's own run clip at running speed (when it has one). */
+    useRun = false,
   ) {
     this.mixer = new THREE.AnimationMixer(root);
     const action = (name: string) => {
@@ -133,6 +136,11 @@ export class AvatarAnimator implements GestureAnimator {
     this.walk = action('walk');
     this.idle.play();
     this.walk.play().setEffectiveWeight(0);
+    const runClip = useRun ? clips.find((c) => c.name === 'run') : undefined;
+    if (runClip) {
+      this.run = this.mixer.clipAction(runClip);
+      this.run.play().setEffectiveWeight(0);
+    }
     for (const name of Object.values(CLIP_GESTURES)) {
       // gesture clips are optional; without one the procedural layer plays it
       if (!clips.some((c) => c.name === name)) continue;
@@ -167,8 +175,14 @@ export class AvatarAnimator implements GestureAnimator {
     this.time += dt;
     this.speed += (speed - this.speed) * (1 - Math.exp(-dt * 8));
     const walk = Math.min(1, this.speed / 1.2);
-    this.walk.setEffectiveWeight(walk);
-    this.walk.timeScale = this.speed > 0.05 ? this.speed / this.walkSpeed : 1;
+    // above a brisk walk the run clip takes over (only for avatars that asked for it)
+    const run = this.run ? THREE.MathUtils.clamp((this.speed - 1.9) / 1.0, 0, 1) : 0;
+    this.walk.setEffectiveWeight(walk * (1 - run));
+    this.walk.timeScale = this.speed > 0.05 ? Math.min(this.speed, 1.9) / this.walkSpeed : 1;
+    if (this.run) {
+      this.run.setEffectiveWeight(walk * run);
+      this.run.timeScale = Math.max(0.6, this.speed / 3.2);
+    }
     this.idle.setEffectiveWeight(1 - walk);
 
     const o = this.oneShot;
