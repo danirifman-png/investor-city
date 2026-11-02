@@ -1,3 +1,4 @@
+import type { FriendsState } from '../core/Friends';
 import * as THREE from 'three';
 import { DISTRICT_IDS, ZONE_GRID, ZONES, type ZoneId } from '../content/cityPlan';
 import type { CameraController } from '../camera/CameraController';
@@ -42,6 +43,7 @@ export interface HudOptions {
   onGraphics(g: 'vivid' | 'classic'): void;
   /** Data for the people journal. */
   social(): SocialState | null;
+  friends?(): FriendsState;
   placeOf(id: NpcId): string;
   onGoToNpc(id: NpcId): void;
   onTapNpc(id: NpcId): void;
@@ -470,7 +472,7 @@ export class Hud {
     const s = this.o.social();
     if (!s) return;
     this.closeOverlays();
-    this.people.render(s);
+    this.people.render(s, this.o.friends?.() ?? {});
     this.people.el.hidden = false;
     this.o.camera.enabled = false;
   }

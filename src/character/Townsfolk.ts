@@ -234,6 +234,32 @@ export class Townsfolk {
     }
   }
 
+  /** The closest loaded person within `range` of `p` (for talking to them). */
+  nearest(p: THREE.Vector3, range: number): { id: string; x: number; z: number } | null {
+    let best: Walker | null = null;
+    let bestD = range;
+    for (const w of this.walkers) {
+      if (!w.object) continue;
+      const d = Math.hypot(p.x - w.x, p.z - w.z);
+      if (d < bestD) {
+        bestD = d;
+        best = w;
+      }
+    }
+    return best && { id: best.def.id, x: best.x, z: best.z };
+  }
+
+  /** Where someone is now. */
+  position(id: string): { x: number; z: number } | null {
+    const w = this.walkers.find((x) => x.def.id === id);
+    return w ? { x: w.x, z: w.z } : null;
+  }
+
+  /** Makes someone wave or smile (a gift, a level up). */
+  react(id: string, move: 'wave' | 'happy' | 'cheer' = 'happy'): void {
+    this.walkers.find((x) => x.def.id === id)?.animator?.play(move);
+  }
+
   /** What the person next to the player is saying, if anyone. */
   bubble(): { x: number; y: number; z: number; key: string } | null {
     const w = this.speaker;

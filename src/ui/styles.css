@@ -4063,3 +4063,113 @@ kbd {
 @media (prefers-reduced-motion: reduce) {
   .sleep-z { animation: none; opacity: 0.8; }
 }
+
+/* ---------------------------- friends ---------------------------- */
+.friend-panel {
+  max-width: 480px;
+  max-height: 88vh;
+  overflow-y: auto;
+}
+.friend-panel h2 {
+  margin-bottom: 0;
+}
+.friend-role {
+  color: var(--muted);
+  display: block;
+  margin-bottom: 6px;
+}
+.friend-hearts {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 1.35em;
+}
+.friend-hearts i {
+  font-style: normal;
+  color: var(--muted);
+}
+.friend-hearts i.on {
+  color: #ff5d7a;
+}
+.friend-hearts span {
+  font-size: 0.68em;
+  margin-inline-start: 8px;
+  font-weight: 700;
+}
+.friend-next {
+  margin: 2px 0 8px;
+  color: var(--muted);
+  font-size: 0.9em;
+}
+.friend-say {
+  position: relative;
+  background: #fff;
+  color: #2a2340;
+  border-radius: 16px;
+  padding: 10px 14px;
+  line-height: 1.5;
+  margin: 6px 0 10px;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.15);
+}
+.friend-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.friend-actions button {
+  flex: 1 1 140px;
+}
+.friend-gift-note {
+  margin-top: 4px;
+}
+.friend-box {
+  border: 2px solid var(--panel-border);
+  border-radius: 14px;
+  padding: 8px 12px;
+  margin: 10px 0;
+  background: rgba(255, 255, 255, 0.05);
+}
+.friend-box p {
+  margin: 6px 0;
+  line-height: 1.45;
+}
+.friend-box.ready {
+  border-color: var(--gold);
+}
+.friend-secret.open {
+  border-color: #b48cff;
+  background: rgba(180, 140, 255, 0.12);
+}
+.friend-secret.locked p {
+  color: var(--muted);
+}
+.friend-status {
+  font-weight: 700;
+}
+.friend-present {
+  margin: 8px 0;
+}
+.friend-present button {
+  width: 100%;
+}
+.people-friends {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.people-friend {
+  border: 2px solid var(--panel-border);
+  border-radius: 12px;
+  padding: 6px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.people-friend .friend-hearts {
+  font-size: 1em;
+}
+.people-friend em {
+  color: var(--muted);
+  font-size: 0.85em;
+}

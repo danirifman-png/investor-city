@@ -62,6 +62,10 @@ import { MoneyView } from '../ui/MoneyView';
 import { MissionView } from '../ui/MissionView';
 import { LifeView, type LifeTab } from '../ui/LifeView';
 import { SleepView } from '../ui/SleepView';
+import { FriendView, gendered, type FriendAction } from '../ui/FriendView';
+import { BEST_GIFT, FRIENDS } from '../content/friends';
+import { TOWN_LINES } from '../content/townsfolk';
+import { chat, finishFavor, friendOf, giveGift, reachPlace, startFavor, takePresent, type FriendChange } from './Friends';
 import { FURNITURE } from '../content/home';
 import { billsFor, noteWorth, payBills, worth, type Worth } from './Life';
 import { add as addNeeds, consume, drain, lowNeeds, needSpeed, sleep as sleepNeeds } from './Needs';
@@ -104,10 +108,10 @@ export function detectQuality(): QualitySettings {
 type Mode = 'title' | 'creator' | 'playing';
 
 /** Something usable next to the player besides characters and buildings. */
-type Near = { kind: 'door'; id: InteriorId } | { kind: 'spot'; room: InteriorId; spot: string } | { kind: 'curio'; id: string } | { kind: 'biz' } | { kind: 'robot' };
+type Near = { kind: 'friend'; id: string } | { kind: 'door'; id: InteriorId } | { kind: 'spot'; room: InteriorId; spot: string } | { kind: 'curio'; id: string } | { kind: 'biz' } | { kind: 'robot' };
 
 const nearKey = (n: Near | null): string | null =>
-  !n ? null : n.kind === 'door' ? `door:${n.id}` : n.kind === 'spot' ? `spot:${n.spot}` : n.kind === 'biz' ? 'biz' : n.kind === 'robot' ? 'robot' : `curio:${n.id}`;
+  !n ? null : n.kind === 'friend' ? `friend:${n.id}` : n.kind === 'door' ? `door:${n.id}` : n.kind === 'spot' ? `spot:${n.spot}` : n.kind === 'biz' ? 'biz' : n.kind === 'robot' ? 'robot' : `curio:${n.id}`;
 
 /** Where a new player appears: the plaza, facing the stock exchange. */
 /** The close, low over-the-shoulder view of the reference art. */
@@ -120,6 +124,8 @@ const BIZ_RANGE = 2.4;
 const ROBOT_TIPS = 8;
 /** How close the player must be to meet Bit (he stands between benches). */
 const ROBOT_RANGE = 3.6;
+/** How close to someone walking in the street the player must be to talk. */
+const FRIEND_RANGE = 2.4;
 /** How close the player must be to start a conversation (tapping a name tag allows a bit more). */
 const TALK_RANGE = 2.8;
 const TAP_TALK_RANGE = 7;
@@ -219,6 +225,7 @@ export class Game {
   readonly missionsView: MissionView;
   readonly lifeView: LifeView;
   readonly sleepView = new SleepView();
+  readonly friendView: FriendView;
   /** The day bills were last checked (bills come once per day played). */
   private billDay = -1;
   private billClock = 0;
@@ -342,6 +349,7 @@ export class Game {
       graphics: () => this.graphics,
       onGraphics: (g) => this.setGraphics(g),
       social: () => this.data?.social ?? null,
+      friends: () => this.data?.friends ?? {},
       placeOf: (id) => t(`district.${this.npcPoi(id).zone}.name`),
       onGoToNpc: (id) => this.goToNpc(id),
       onTapNpc: (id) => this.tapNpc(id),
@@ -476,6 +484,18 @@ export class Game {
     });
     this.hud.addOverlay(this.lifeView.el, () => this.lifeView.close());
     this.hud.addOverlay(this.sleepView.el, () => this.sleepView.finish());
+    this.friendView = new FriendView({
+      view: (id) => {
+        const d = this.data;
+        const poi = FRIENDS[id] && this.city.pois.find((p) => p.key === FRIENDS[id].favor.poi);
+        return d ? { friend: friendOf(d.friends, id), wallet: d.growth.coins, day: this.today(), place: poi ? t(`poi.${poi.key}.name`) : '' } : null;
+      },
+      act: (id, a) => this.friendAct(id, a),
+      onClose: () => {
+        this.cam.enabled = true;
+      },
+    });
+    this.hud.addOverlay(this.friendView.el, () => this.friendView.close());
     this.bag = new Bag({ view: () => this.data?.growth ?? null, onClose: () => this.hud.closeOverlays() });
     this.hud.addOverlay(this.bag.el, () => this.bag.hide());
     this.settings = new SettingsPanel({
@@ -849,6 +869,13 @@ export class Game {
     const d = this.data;
     if (!d) return;
     const fridge = d.shop.owned.includes('fridge');
+    // with a table, the hero takes the food to the table and eats there
+    if (d.shop.owned.includes('table')) {
+      const tb = FURNITURE.table;
+      const at = this.interiors.toWorld('home', tb.x + 1.05, tb.z);
+      const mid = this.interiors.toWorld('home', tb.x, tb.z);
+      this.player.teleport(at.x, at.z, Math.atan2(mid.x - at.x, mid.z - at.z));
+    }
     let text: string;
     if (fridge && d.growth.coins >= HOME_MEAL.price) {
       d.growth.coins -= HOME_MEAL.price;
@@ -1061,6 +1088,104 @@ export class Game {
   }
 
   /** Moves active errands to "ready" once their goal is met. */
+  /** Opens the chat panel with someone walking in the street. */
+  private openFriend(id: string): void {
+    const d = this.data;
+    if (!d || !FRIENDS[id]) return;
+    this.select(null);
+    this.hud.closeOverlays();
+    const at = this.town.position(id);
+    if (at) this.player.heading = Math.atan2(at.x - this.player.position.x, at.z - this.player.position.z);
+    this.player.animator.play('wave');
+    this.town.react(id, 'wave');
+    if (!d.friends[id]) d.friends = { ...d.friends, [id]: friendOf(d.friends, id) };
+    this.friendView.show(id);
+    this.cam.enabled = false;
+  }
+
+  private friendAct(id: string, a: FriendAction): string | null {
+    const d = this.data;
+    if (!d) return null;
+    const name = t(`friend.${id}.name`);
+    const day = this.today();
+    let change: FriendChange | null = null;
+    let say: string | null = null;
+    switch (a) {
+      case 'chat': {
+        change = chat(d.friends, id, day);
+        say = change.gained ? t(`town.${id}.${(friendOf(d.friends, id).points + day) % TOWN_LINES}`) : t('friend.chatted');
+        if (change.gained) this.hud.toast(`💛 ${t('friend.chatGain', { n: change.gained })}`, 1600);
+        break;
+      }
+      case 'gift': {
+        const g = giveGift(d.friends, id, d.growth.coins, day);
+        if (!g) return null;
+        change = g;
+        d.growth.coins -= g.cost;
+        this.hud.playerCard.update(d.character.nickname, d.character.topColor, d.growth);
+        this.sound.play('coin');
+        say = `${FRIENDS[id].gift.icon} ${gendered(id, 'friend.thanks')}`;
+        this.town.react(id, 'happy');
+        break;
+      }
+      case 'favorTake':
+        d.friends = startFavor(d.friends, id);
+        say = t('friend.favorThanks');
+        this.player.animator.play('nod');
+        break;
+      case 'favorReport': {
+        const f = finishFavor(d.friends, id);
+        if (!f) return null;
+        change = f;
+        this.reward({ coins: f.coins, xp: f.xp });
+        this.sound.play('chest');
+        this.player.animator.play('cheer');
+        this.town.react(id, 'cheer');
+        say = t(`friend.${id}.favorDone`);
+        this.hud.toast(`🤝 ${t('friend.favorPaid', { coins: f.coins, xp: f.xp })}`, 2600);
+        break;
+      }
+      case 'present': {
+        const s = takePresent(d.friends, id);
+        if (!s) return null;
+        d.friends = s;
+        this.reward(BEST_GIFT);
+        this.sound.play('chest');
+        this.player.animator.play('cheer');
+        this.town.react(id, 'cheer');
+        say = t(`friend.${id}.present`);
+        this.hud.toast(gendered(id, 'friend.presentGot', { name, coins: BEST_GIFT.coins }), 3200);
+        break;
+      }
+    }
+    if (change) {
+      d.friends = change.state;
+      if (change.levelUp !== null) {
+        this.sound.play('levelUp');
+        this.town.react(id, 'cheer');
+        this.hud.toast(t('friend.levelUp', { name, level: t(`friend.level.${change.levelUp}`) }), 3200);
+      }
+    }
+    this.save(false);
+    return say;
+  }
+
+  /** A favour asks the player to visit a place: arriving there makes it ready to report. */
+  private checkFavors(): void {
+    const d = this.data;
+    if (!d || this.interiors.current) return;
+    for (const [id, f] of Object.entries(d.friends)) {
+      if (f.favor !== 'active') continue;
+      const key = FRIENDS[id]?.favor.poi;
+      const poi = key ? this.city.pois.find((p) => p.key === key) : null;
+      if (!poi || this.poiDistance(poi) > INTERACT_RANGE + 2) continue;
+      d.friends = reachPlace(d.friends, key!).state;
+      this.sound.play('coin');
+      this.hud.toast(t('friend.favorToast', { place: t(`poi.${key}.name`), name: t(`friend.${id}.name`) }), 3600);
+      this.save(false);
+    }
+  }
+
   private checkErrands(): void {
     const s = this.data?.social;
     if (!s) return;
@@ -1254,6 +1379,7 @@ export class Game {
       if (this.errandCheck <= 0) {
         this.errandCheck = 0.3;
         this.checkErrands();
+        this.checkFavors();
       }
       this.questCheck -= dt;
       if (this.questCheck <= 0 && !this.conv) {
@@ -1357,6 +1483,8 @@ export class Game {
     if (!room && Math.hypot(p.x - bc.x, p.z - bc.z) < BIZ_RANGE) return { kind: 'biz' };
     const bot = this.extras.buddy;
     if (!room && !bot.following && bot.object && Math.hypot(p.x - bot.position.x, p.z - bot.position.z) < ROBOT_RANGE) return { kind: 'robot' };
+    const f = room ? null : this.town.nearest(p, FRIEND_RANGE);
+    if (f) return { kind: 'friend', id: f.id };
     return null;
   }
 
@@ -1410,6 +1538,7 @@ export class Game {
   }
 
   private thingPos(n: Near): { x: number; z: number } | null {
+    if (n.kind === 'friend') return this.town.position(n.id);
     if (n.kind === 'door') return this.interiors.doors.find((d) => d.id === n.id) ?? null;
     if (n.kind === 'curio') return this.curios.position(n.id);
     if (n.kind === 'biz') return this.bizSite.counter;
@@ -1422,6 +1551,7 @@ export class Game {
     if (n.kind === 'door') return { id, text: INTERIORS[n.id].at ? t('portal.prompt') : t('door.enter', { name: this.interiors.roomName(n.id) }) };
     if (n.kind === 'biz') return { id, text: t('biz.prompt') };
     if (n.kind === 'robot') return { id, text: t('robot.prompt') };
+    if (n.kind === 'friend') return { id, text: t('friend.prompt', { name: t(`friend.${n.id}.name`) }) };
     if (n.kind === 'curio') {
       const found = this.data?.learning.curiosities.includes(n.id);
       return { id, text: found ? t(`curio.${n.id}.title`) : t('curio.prompt') };
@@ -1434,6 +1564,7 @@ export class Game {
     if (n.kind === 'curio') return this.onCurio(n.id);
     if (n.kind === 'biz') return this.openBusiness();
     if (n.kind === 'robot') return this.meetRobot();
+    if (n.kind === 'friend') return this.openFriend(n.id);
     const spot = INTERIORS[n.room].hotspots.find((h) => h.id === n.spot);
     if (!spot) return;
     const m = this.interiors.marker(n.room, n.spot);

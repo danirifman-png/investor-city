@@ -351,3 +351,23 @@ Added after feedback asking for a more realistic look everywhere.
   in `migrate()`.
 - Phase 5–6 (market, news): the exchange ticker and news-tower screens are already
   canvas textures and will be fed by the simulation instead of fixed text.
+
+## Friends in the street
+
+The ten people walking around the city (content/townsfolk) can become friends.
+Walk up to one and press E (or tap the prompt) to open `ui/FriendView`.
+
+- `content/friends.ts`: each friend's favourite gift (icon, price), a favour
+  (visit a place, by POI key) and grammatical gender; the points per level and
+  the rewards. Text in `he.friends.json` under `friend.<id>.*`.
+- `core/Friends.ts`: pure rules. A chat adds a point once a day, a gift adds
+  three once a day, a favour adds four plus coins. Points never go down and a
+  day away costs nothing. At level 3 the friend tells a secret about the city
+  founder's treasure (hints for the mystery); at level 5 a once-only present.
+- `Game.checkFavors` marks a favour ready when the player comes near its place;
+  the player then reports back to the friend.
+- Saved as `friends` (sanitized, no version bump). The people panel lists them.
+
+Sleep (`ui/SleepView`): the hero lies on the bed (`PlayerController.lieDown`),
+the night overlay fills energy over a few seconds, and "skip to morning" ends it
+at once. With a table at home, a meal is eaten at the table.

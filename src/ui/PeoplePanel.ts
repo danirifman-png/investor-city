@@ -1,3 +1,6 @@
+import { FRIEND_MAX } from '../content/friends';
+import { TOWNSFOLK } from '../content/townsfolk';
+import { friendCount, friendLevel, type FriendsState } from '../core/Friends';
 import { NPC_IDS, NPCS, repLevel, type NpcId } from '../content/npcs';
 import { metCount, type SocialState } from '../core/Social';
 import { t } from '../i18n';
@@ -35,7 +38,25 @@ export class PeoplePanel {
     this.el = h('div', { class: 'modal', hidden: true, onclick: (e: Event) => e.target === this.el && o.onClose() }, [panel]);
   }
 
-  render(s: SocialState): void {
+  render(s: SocialState, friends: FriendsState = {}): void {
+    const known = TOWNSFOLK.filter(({ id }) => friends[id]);
+    const friendList = known.length
+      ? h(
+          'div',
+          { class: 'people-friends' },
+          known.map(({ id }) => {
+            const lvl = friendLevel(friends[id].points);
+            return h('div', { class: 'people-friend', 'data-friend': id }, [
+              h('strong', {}, [t(`friend.${id}.name`)]),
+              h('em', {}, [t(`friend.${id}.role`)]),
+              h('div', { class: 'friend-hearts' }, [...Array.from({ length: FRIEND_MAX }, (_, i) => h('i', { class: i < lvl ? 'on' : '' }, [i < lvl ? '❤' : '♡']))]),
+              friends[id].favor === 'active' || friends[id].favor === 'ready'
+                ? h('span', { class: 'people-errand active' }, [`🤝 ${t(friends[id].favor === 'ready' ? 'people.errandReady' : 'people.errandActive')}`])
+                : null,
+            ]);
+          }),
+        )
+      : h('p', { class: 'people-empty' }, [t('people.friendsNone')]);
     const tasks = NPC_IDS.filter((id) => s.errands[id] === 'active' || s.errands[id] === 'ready');
     const taskList = tasks.length
       ? h(
@@ -87,6 +108,9 @@ export class PeoplePanel {
       h('h3', {}, [t('people.tasksTitle')]),
       taskList,
       h('div', { class: 'people-grid' }, cards),
+      h('h3', {}, [t('people.friendsTitle')]),
+      h('p', { class: 'people-count' }, [t('people.friendsCount', { n: friendCount(friends) })]),
+      friendList,
     );
   }
 }
