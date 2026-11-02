@@ -18,9 +18,16 @@ interface Extra {
 
 const STALL_ROT = Math.PI / 2 - 0.25;
 
+/** A point in the stall's own frame (x along the counter, z toward the customers) in plaza coordinates. */
+function stallSpot(lx: number, lz: number): { x: number; z: number } {
+  const c = Math.cos(STALL_ROT);
+  const s = Math.sin(STALL_ROT);
+  return { x: PLAZA.stall.x + lx * c + lz * s, z: PLAZA.stall.z - lx * s + lz * c };
+}
+
 const EXTRAS: Extra[] = [
-  // behind the counter of the big stall, facing the customers
-  { model: 'models/meshy/vendor.glb', x: PLAZA.stall.x - Math.sin(STALL_ROT) * 0.7, z: PLAZA.stall.z - Math.cos(STALL_ROT) * 0.7, heading: STALL_ROT, walkSpeed: 1.3 },
+  // in front of the big stall, beside its counter, facing the customers (behind the counter there is no room to stand)
+  { model: 'models/meshy/vendor.glb', ...stallSpot(1.1, 2.1), heading: STALL_ROT, walkSpeed: 1.3 },
 ];
 
 const ROBOT: Extra = { model: 'models/meshy/robot.glb', x: PLAZA.robot.x, z: PLAZA.robot.z, heading: -Math.PI / 2 - 0.4, walkSpeed: 1.0 };
@@ -180,7 +187,7 @@ class ExtraActor {
     let want = this.def.heading;
     if (player && d < 6) {
       want = Math.atan2(player.x - this.def.x, player.z - this.def.z);
-      // the vendor stays behind the counter: only a half turn toward the player
+      // the vendor keeps to the stall: only a half turn toward the player
       if (this.def.model.includes('vendor')) want = this.def.heading + THREE.MathUtils.clamp(Math.atan2(Math.sin(want - this.def.heading), Math.cos(want - this.def.heading)), -0.9, 0.9);
       if (!this.greeted && !this.animator.playing) {
         this.greeted = true;
@@ -212,10 +219,13 @@ export class PlazaExtras {
       })
       .catch((err) => console.warn(`${r.model} failed to load`, err));
     for (const def of EXTRAS) {
+      // stand on the paving (it is a little above y 0), measured before the actor's own block is added
+      const y = Math.min(0.4, collision.groundHeight(def.x, def.z, 0.4));
       collision.add({ x0: def.x - 0.35, z0: def.z - 0.35, x1: def.x + 0.35, z1: def.z + 0.35, bottom: 0, top: 1.8, water: false });
       void loadAvatar(def.model)
         .then(({ scene, clips }) => {
           const actor = new ExtraActor(def, scene, new AvatarAnimator(scene, clips, def.walkSpeed));
+          scene.position.y = y;
           this.actors.push(actor);
           this.group.add(scene);
         })

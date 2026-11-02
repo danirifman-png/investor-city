@@ -137,7 +137,7 @@ const INTERACT_RANGE = 2.6;
 /** How close to the business counter the player must stand. */
 const BIZ_RANGE = 2.4;
 /** How many tips Bit the robot knows (robot.tip.0 ... in the locale). */
-const ROBOT_TIPS = 8;
+const ROBOT_TIPS = 9;
 /** How close the player must be to meet Bit (he stands between benches). */
 const ROBOT_RANGE = 3.6;
 /** How close to someone walking in the street the player must be to talk. */
@@ -910,8 +910,12 @@ export class Game {
     this.player.teleport(foot.x, foot.z, 0);
     this.player.lieDown(bed ? 0.55 : 0.22);
     this.cam.setState({ yaw: Math.PI * 0.62, pitch: 0.75, distance: 4.2 }, false);
+    // the dog curls up on the rug beside the bed
+    const nook = this.interiors.toWorld('home', fit.x + 1.0, fit.z + 1.2);
+    this.gear.petJoin('sleep', new THREE.Vector3(nook.x, this.player.position.y, nook.z), Math.PI * 0.75);
     this.sleepView.show(from, to, () => {
       d.needs = sleepNeeds(d.needs, to);
+      this.gear.petJoin(null);
       this.player.lieDown(null);
       const side = this.interiors.toWorld('home', fit.x + 1.1, fit.z + 0.6);
       this.player.teleport(side.x, side.z, Math.PI / 2);
@@ -936,7 +940,11 @@ export class Game {
       this.player.teleport(at.x, at.z, Math.atan2(mid.x - at.x, mid.z - at.z));
     }
     let text: string;
-    if (fridge && d.growth.coins >= HOME_MEAL.price) {
+    // the dog has its own bowl beside the hero
+    const side = this.player.object.localToWorld(new THREE.Vector3(0.75, 0, 0.35));
+    const meal = fridge && d.growth.coins >= HOME_MEAL.price;
+    this.gear.petJoin(meal ? 'eat' : 'drink', new THREE.Vector3(side.x, this.player.position.y, side.z), this.player.heading, meal ? 7 : 5);
+    if (meal) {
       d.growth.coins -= HOME_MEAL.price;
       d.needs = addNeeds(d.needs, { food: HOME_MEAL.food, water: HOME_MEAL.water });
       this.gear.holdTreat('sandwich');

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { DOG_SHAPE, PetMotion, rigQuadruped, type PetAction, type QuadrupedShape } from './PetRig';
 import type { Slot } from '../content/shop';
 import { loadGltf } from './AvatarNpc';
 import type { PlayerController } from './PlayerController';
@@ -36,8 +37,8 @@ const WEAR: Record<string, WearFit> = {
   backpack: { file: 'backpack.glb', width: 1.5, sit: 0, place: 'back', rotY: Math.PI },
 };
 
-const PETS: Record<string, { file: string; hover?: boolean }> = {
-  dog: { file: 'pet_dog.glb' },
+const PETS: Record<string, { file: string; hover?: boolean; shape?: QuadrupedShape }> = {
+  dog: { file: 'pet_dog.glb', shape: DOG_SHAPE },
   cat: { file: 'pet_cat.glb' },
   robotPet: { file: 'pet_robot.glb', hover: true },
 };
@@ -124,7 +125,10 @@ export class Gear {
   private worn = new Map<string, THREE.Object3D>();
   private head: HeadFrame | null = null;
   private equipped: Partial<Record<Slot, string>> = {};
-  private pet: { id: string; obj: THREE.Object3D; hover: boolean; t: number } | null = null;
+  private pet: { id: string; obj: THREE.Object3D; hover: boolean; t: number; motion: PetMotion | null } | null = null;
+  /** What the pet is doing with the hero (eating, drinking, sleeping), and where. */
+  private petDoing: { action: PetAction; at: THREE.Vector3 | null; heading: number; until: number } = { action: null, at: null, heading: 0, until: 0 };
+  private bowl: THREE.Object3D | null = null;
   private balloon: { obj: THREE.Object3D; line: THREE.Line; t: number } | null = null;
   private treat: { obj: THREE.Object3D; t: number; size: number; bites: number; drink: boolean } | null = null;
   /** Bumped on every apply so that late model loads for old choices are dropped. */
@@ -175,9 +179,27 @@ export class Gear {
         this.pet?.obj.removeFromParent();
         this.group.add(obj);
         this.player.object.localToWorld(obj.position.set(0.9, 0, -0.9));
-        this.pet = { id, obj, hover: !!p.hover, t: 0 };
+        const bones = p.shape ? rigQuadruped(obj, p.shape) : null;
+        this.pet = { id, obj, hover: !!p.hover, t: 0, motion: bones ? new PetMotion(bones) : null };
       })
       .catch(() => undefined);
+  }
+
+  /**
+   * The pet joins in: eats or drinks from a bowl at `at` (for `seconds`), or
+   * sleeps there until called with null. Pets without a skeleton just come and sit.
+   */
+  petJoin(action: PetAction, at: THREE.Vector3 | null = null, heading = 0, seconds = 0): void {
+    this.petDoing = { action, at: at?.clone() ?? null, heading, until: seconds > 0 ? seconds : Infinity };
+    this.bowl?.removeFromParent();
+    this.bowl = null;
+    if ((action === 'eat' || action === 'drink') && at) {
+      const bowl = petBowl(action === 'drink');
+      // the bowl sits under the pet's nose
+      bowl.position.set(at.x + Math.sin(heading) * 0.3, at.y, at.z + Math.cos(heading) * 0.3);
+      this.group.add(bowl);
+      this.bowl = bowl;
+    }
   }
 
   private setBalloon(on: boolean): void {
@@ -257,21 +279,40 @@ export class Gear {
     if (this.pet) {
       const pet = this.pet;
       pet.t += dt;
-      // trots beside and a little behind
-      p.object.localToWorld(v.set(0.95, 0, -0.9));
-      v.y = p.position.y;
+      const doing = this.petDoing;
+      if (doing.action && doing.until !== Infinity) {
+        doing.until -= dt;
+        if (doing.until <= 0) this.petJoin(null);
+      }
+      // the hero eating a treat: the dog sits and begs
+      const action: PetAction = doing.action ?? (this.treat && !p.frozen ? 'beg' : null);
+      if (doing.at) v.copy(doing.at);
+      else {
+        // trots beside and a little behind
+        p.object.localToWorld(v.set(0.95, 0, -0.9));
+        v.y = p.position.y;
+      }
       const far = pet.obj.position.distanceTo(v);
       if (far > 8) pet.obj.position.copy(v);
-      const k = 1 - Math.exp(-dt * 5);
+      const k = 1 - Math.exp(-dt * (doing.at ? 3 : 5));
       const before = v2.copy(pet.obj.position);
       pet.obj.position.x += (v.x - pet.obj.position.x) * k;
       pet.obj.position.z += (v.z - pet.obj.position.z) * k;
       const step = Math.hypot(pet.obj.position.x - before.x, pet.obj.position.z - before.z);
-      const moving = step / Math.max(dt, 1e-3) > 0.4;
+      const speed = step / Math.max(dt, 1e-3);
+      const moving = speed > 0.4;
+      const face = doing.at ? doing.heading : action === 'beg' ? Math.atan2(p.position.x - pet.obj.position.x, p.position.z - pet.obj.position.z) : yaw;
       if (moving) pet.obj.rotation.y = Math.atan2(pet.obj.position.x - before.x, pet.obj.position.z - before.z);
-      else pet.obj.rotation.y += (yaw - pet.obj.rotation.y) * k * 0.3;
-      pet.obj.position.y = p.position.y + (pet.hover ? 0.55 + Math.sin(pet.t * 2.6) * 0.06 : moving ? Math.abs(Math.sin(pet.t * 9)) * 0.09 : 0);
-      pet.obj.visible = p.object.visible;
+      else {
+        const diff = Math.atan2(Math.sin(face - pet.obj.rotation.y), Math.cos(face - pet.obj.rotation.y));
+        pet.obj.rotation.y += diff * Math.min(1, dt * 4);
+      }
+      const ground = doing.at ? doing.at.y : p.position.y;
+      if (pet.motion) {
+        pet.obj.position.y = ground;
+        pet.motion.update(dt, moving ? speed : 0, moving ? null : action);
+      } else pet.obj.position.y = ground + (pet.hover ? 0.55 + Math.sin(pet.t * 2.6) * 0.06 : moving ? Math.abs(Math.sin(pet.t * 9)) * 0.09 : 0);
+      pet.obj.visible = doing.at ? true : p.object.visible;
     }
     if (this.balloon) {
       const b = this.balloon;
@@ -320,4 +361,20 @@ export class Gear {
       }
     }
   }
+}
+
+/** A small pet bowl, with kibble or water. */
+function petBowl(water: boolean): THREE.Object3D {
+  const g = new THREE.Group();
+  g.name = 'petBowl';
+  const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.08, 0.06, 20), new THREE.MeshStandardMaterial({ color: water ? '#3d8fd6' : '#e2574c', roughness: 0.5 }));
+  bowl.position.y = 0.03;
+  const inside = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.095, 0.095, 0.01, 20),
+    water ? new THREE.MeshStandardMaterial({ color: '#8fd6ff', roughness: 0.1, transparent: true, opacity: 0.85 }) : new THREE.MeshStandardMaterial({ color: '#9a6236', roughness: 0.9 }),
+  );
+  inside.position.y = 0.055;
+  bowl.castShadow = true;
+  g.add(bowl, inside);
+  return g;
 }

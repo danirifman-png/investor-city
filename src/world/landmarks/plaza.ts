@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { FountainWater } from '../FountainWater';
 import { t } from '../../i18n';
 import type { Lot } from '../cityLayout';
 import { rectCenter } from '../cityLayout';
@@ -330,19 +331,21 @@ function tieredFountain(f: Frame, ctx: BuildContext): void {
   f.cyl(0.42, 0.55, 1.3, STONE, { y: 2.9 }, 12);
   f.cyl(1.35, 0.6, 0.4, STONE, { y: 4.0 }, 18);
   f.cyl(1.2, 1.2, 0.1, '#7fd6ff', { y: 4.36 }, 18, 'water');
-  // glowing water sheets falling from the bowls and a crown spray
-  const sheet = new THREE.MeshBasicMaterial({ color: '#8fe3ff', transparent: true, opacity: 0.5, depthWrite: false, toneMapped: false, side: THREE.DoubleSide });
-  const low = new THREE.Mesh(new THREE.CylinderGeometry(2.75, 3.1, 2.1, 28, 1, true), sheet);
-  f.place(low, { y: 1.85 });
-  const high = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.7, 1.5, 20, 1, true), sheet);
-  f.place(high, { y: 3.65 });
-  const crown = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.8, 12, 1, true), sheet);
-  f.place(crown, { y: 5.3 });
-  ctx.addAnimator((time) => {
-    const p = 1 + Math.sin(time * 3.1) * 0.06;
-    crown.scale.set(p, 1 + Math.sin(time * 2.3) * 0.12, p);
-    sheet.opacity = 0.46 + Math.sin(time * 4.2) * 0.05;
-  });
+  // moving water: pools, sheets pouring over both bowls, a jet and droplets
+  const water = new FountainWater(
+    [
+      [5.2, 0.87],
+      [2.5, 2.95],
+      [1.2, 4.47],
+    ],
+    [
+      { rim: 2.72, top: 2.95, land: 0.87, landR: 3.05 },
+      { rim: 1.37, top: 4.47, land: 2.95, landR: 1.62 },
+    ],
+    4.47,
+  );
+  f.place(water.group);
+  ctx.addAnimator((time, dt) => water.update(dt, time));
 }
 
 /* ------------------------------------------------------------------ */

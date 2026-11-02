@@ -44,8 +44,8 @@ export interface InteriorDef {
   style?: { wall: string; lamp: string };
 }
 
-/** The secret portal in the city (in the playground, between the trampoline and the ramp) that leads to Cloud Land (world coordinates). */
-export const CITY_PORTAL = { x: -16.4, z: 15.2, y: 0.5 };
+/** The secret portal in the city (a quiet corner of the park, east of the paths, before the pond) that leads to Cloud Land (world coordinates). */
+export const CITY_PORTAL = { x: 22, z: 88, y: 0.38 };
 
 export const INTERIORS: Record<InteriorId, InteriorDef> = {
   pizzeria: {
