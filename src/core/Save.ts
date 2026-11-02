@@ -1,3 +1,4 @@
+import { newTreasure, sanitizeTreasure, type TreasureState } from './Treasure';
 import { sanitizeFriends, type FriendsState } from './Friends';
 import { sanitizeMissionRecord, type MissionRecord } from './BuildingMissions';
 import { sanitizeDecisions, type DecisionRecord } from './Decisions';
@@ -76,6 +77,8 @@ export interface SaveData {
   needs: Needs;
   /** Friendships with the people walking around the city (added without a version bump: missing means none). */
   friends: FriendsState;
+  /** The founder's treasure (added without a version bump: missing means not started). */
+  treasure: TreasureState;
 }
 
 export interface StorageLike {
@@ -103,6 +106,7 @@ export function newSave(character: CharacterLook, now = Date.now()): SaveData {
     life: newLife(),
     needs: newNeeds(),
     friends: {},
+    treasure: newTreasure(),
     learning: { concepts: [], curiosities: [] },
     growth: newProgression(),
   };
@@ -150,6 +154,7 @@ export function migrate(raw: unknown): SaveData | null {
   base.life = sanitizeLife(src.life);
   base.needs = sanitizeNeeds(src.needs);
   base.friends = sanitizeFriends(src.friends);
+  base.treasure = sanitizeTreasure(src.treasure);
   base.found = Array.isArray(src.found) ? [...new Set(src.found.filter((x): x is string => typeof x === 'string' && x.length < 40))].slice(0, 400) : [];
   const learning = (src.learning ?? {}) as Record<string, unknown>;
   const pick = (list: unknown, allowed: readonly string[]) =>

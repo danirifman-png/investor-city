@@ -88,6 +88,13 @@ export const FINISHES: Partial<Record<InteriorId, Finish>> = {
     lamp: { color: '#fff4e4', shade: '#ffffff', intensity: 9, style: 'pendant' },
     windows: true,
   },
+  mall: {
+    floor: { kind: 'marble', base: '#f4f1ec', alt: '#d9d3ca', tile: 3, rough: 0.15, bump: 0.004 },
+    wall: { kind: 'plaster', base: '#f7f3ee', alt: '#eee7de', tile: 3, rough: 0.85 },
+    trim: '#f08a4b',
+    lamp: { color: '#fff4e4', shade: '#ffffff', intensity: 11, style: 'spot' },
+    windows: true,
+  },
   home: {
     floor: { kind: 'planks', base: '#c99a6b', alt: '#b8895b', tile: 2.4, rough: 0.5, bump: 0.015 },
     wall: { kind: 'plaster', base: '#fdf1dc', alt: '#f4e4c8', tile: 3, rough: 0.9 },

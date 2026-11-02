@@ -1,3 +1,5 @@
+import type { ShopCategory } from './shop';
+import { MALL } from './mall';
 import type { NpcId } from './npcs';
 
 /**
@@ -6,12 +8,14 @@ import type { NpcId } from './npcs';
  * back wall (-d/2) to the door (+d/2). Text: `interior.<id>.name`,
  * `spot.<interior>.<spot>.prompt` and, for info spots, `.title / .body`.
  */
-export type InteriorId = 'pizzeria' | 'bank' | 'exchange' | 'academy' | 'newsTower' | 'startupHub' | 'realEstateAgency' | 'skyLand' | 'home';
+export type InteriorId = 'pizzeria' | 'bank' | 'exchange' | 'academy' | 'newsTower' | 'startupHub' | 'realEstateAgency' | 'skyLand' | 'home' | 'mall';
 
 export interface Hotspot {
   id: string;
+  /** shop: opens the shop at `tab`. */
+  tab?: ShopCategory;
   /** clue: evidence for a mission; info: a short explanation; game: a minigame; mission: the building's missions; exit: the way out; portal: a magic portal to Cloud Land; life: renting or buying a home; rest: sleep; kitchen: eat and drink at home. */
-  kind: 'clue' | 'info' | 'game' | 'mission' | 'exit' | 'portal' | 'life' | 'rest' | 'kitchen';
+  kind: 'clue' | 'info' | 'game' | 'mission' | 'exit' | 'portal' | 'life' | 'rest' | 'kitchen' | 'shop';
   x: number;
   z: number;
   /** Marker height (default 1.6). */
@@ -34,6 +38,8 @@ export interface InteriorDef {
   /** Who works here; they step inside while the player visits. */
   npc?: { id: NpcId; x: number; z: number; heading: number };
   hotspots: Hotspot[];
+  /** Wall height (default 3.4; the two-floor mall is taller). */
+  wallH?: number;
   /** Wall and lamp colours (defaults: warm cream, warm white). */
   style?: { wall: string; lamp: string };
 }
@@ -163,6 +169,25 @@ export const INTERIORS: Record<InteriorId, InteriorDef> = {
     ],
   },
 
+  mall: {
+    id: 'mall',
+    poi: 'mall',
+    door: { dx: 0, dz: 7.5, y: 0.3 },
+    size: { w: MALL.w, d: MALL.d },
+    wallH: MALL.wallH,
+    style: { wall: '#f7f3ee', lamp: '#fff4e4' },
+    hotspots: [
+      { id: 'fashion', kind: 'shop', tab: 'clothes', x: -10.6, z: 1.5, y: 2.2 },
+      { id: 'toys', kind: 'shop', tab: 'pets', x: -10.6, z: 6.5, y: 2.2 },
+      { id: 'food', kind: 'shop', tab: 'food', x: 10.6, z: 1.5, y: 2.2 },
+      { id: 'sports', kind: 'shop', tab: 'rides', x: 10.6, z: 6.5, y: 2.2 },
+      { id: 'home', kind: 'shop', tab: 'home', x: -6.5, z: -7.6, y: MALL.upper + 2.2 },
+      { id: 'fun', kind: 'shop', tab: 'fun', x: 6.5, z: -7.6, y: MALL.upper + 2.2 },
+      { id: 'lift', kind: 'info', x: -7, z: -8.9, y: 2.2 },
+      { id: 'sale', kind: 'info', x: -6.5, z: 4.5, y: 2.4 },
+      { id: 'exit', kind: 'exit', x: 0, z: 9.4, y: 2.2 },
+    ],
+  },
 };
 
 export const INTERIOR_IDS = Object.keys(INTERIORS) as InteriorId[];

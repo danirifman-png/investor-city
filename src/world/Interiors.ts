@@ -10,6 +10,7 @@ import { buildBankInterior, buildHomeInterior, buildPizzeriaInterior } from './i
 import { FURNITURE } from '../content/home';
 import { loadGltf } from '../character/AvatarNpc';
 import { buildSkyLandInterior, roomPortal } from './interiors/skyLand';
+import { buildMallInterior } from './interiors/mall';
 import type { CityMaterials } from './Materials';
 import { Marker } from './Markers';
 import { buildPortal, type Portal } from './Portal';
@@ -28,7 +29,7 @@ import type { Animator, BuildContext, Poi } from './types';
 const ORIGIN = { x: 620, z: 620 };
 const SPACING = 60;
 const INTERIOR_COUNT = Object.keys(INTERIORS).length;
-const WALL_H = 3.4;
+const WALL_HEIGHT = 3.4;
 const WALL_T = 0.3;
 const DOOR_W = 1.8;
 
@@ -42,6 +43,7 @@ const ROOM_BUILDERS: Record<InteriorId, (f: Frame, ctx: BuildContext) => void> =
   realEstateAgency: buildEstateInterior,
   skyLand: buildSkyLandInterior,
   home: buildHomeInterior,
+  mall: buildMallInterior,
 };
 
 export interface Room {
@@ -130,7 +132,7 @@ export class Interiors {
     for (const s of def.hotspots) if (s.kind === 'portal') roomPortal(f, ctx, s.x, s.z, Math.PI / 2);
     const walls: Room['walls'] = [];
     if (!def.open) this.buildWalls(def, ox, oz, group, walls, collision);
-    const markers: Marker[] = def.hotspots.map((s) => new Marker(s.kind === 'mission' || s.kind === 'life' || s.kind === 'rest' || s.kind === 'kitchen' ? 'game' : s.kind === 'portal' ? 'door' : s.kind, ox + s.x, s.y ?? 1.6, oz + s.z, s.id));
+    const markers: Marker[] = def.hotspots.map((s) => new Marker(s.kind === 'mission' || s.kind === 'life' || s.kind === 'rest' || s.kind === 'kitchen' || s.kind === 'shop' ? 'game' : s.kind === 'portal' ? 'door' : s.kind, ox + s.x, s.y ?? 1.6, oz + s.z, s.id));
     for (const m of markers) group.add(m.sprite);
 
     const staticMeshes = batch.build(materials.byKey);
@@ -147,6 +149,7 @@ export class Interiors {
   /** Four walls with a doorway, the room's own floor, panelling, windows and lamps (see interiors/finish.ts). */
   private buildWalls(def: InteriorDef, ox: number, oz: number, group: THREE.Group, walls: Room['walls'], collision: CollisionWorld): void {
     const { w, d } = def.size;
+    const WALL_H = def.wallH ?? WALL_HEIGHT;
     const fin = FINISHES[def.id];
     const seed = def.id.length * 131 + w;
 
@@ -241,7 +244,8 @@ export class Interiors {
       light.position.set(ox, 3.0, oz + lz);
       group.add(light);
     }
-    for (const lx of [-w / 4, w / 4]) for (const lz of [-d / 4, d / 4]) group.add(lampFixture(fin, ox + lx, oz + lz));
+    // tall rooms (the mall) light themselves
+    if (!def.wallH) for (const lx of [-w / 4, w / 4]) for (const lz of [-d / 4, d / 4]) group.add(lampFixture(fin, ox + lx, oz + lz));
   }
 
   private furniture = new Map<string, THREE.Object3D>();
@@ -358,6 +362,8 @@ export class Interiors {
     let best: Marker | null = null;
     let bd = range;
     for (const m of r.markers) {
+      // a marker on another floor (the mall) is out of reach
+      if (r.def.wallH && Math.abs(m.position.y - p.y - 2) > 2.6) continue;
       const dist = Math.hypot(p.x - m.position.x, p.z - m.position.z);
       if (dist < bd) {
         bd = dist;
@@ -443,26 +449,26 @@ function lampFixture(fin: Finish, x: number, z: number): THREE.Group {
   const shade = new THREE.MeshStandardMaterial({ color: fin.lamp.shade, roughness: 0.4, metalness: fin.lamp.style === 'globe' ? 0.6 : 0.2 });
   const bulb = new THREE.MeshBasicMaterial({ color: fin.lamp.color });
   const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.7, 6), shade);
-  cord.position.y = WALL_H + 0.05 - 0.35;
+  cord.position.y = WALL_HEIGHT + 0.05 - 0.35;
   g.add(cord);
   if (fin.lamp.style === 'pendant') {
     const cone = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.26, 20, 1, true), shade);
     cone.material.side = THREE.DoubleSide;
-    cone.position.y = WALL_H - 0.4;
+    cone.position.y = WALL_HEIGHT - 0.4;
     const b = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 8), bulb);
-    b.position.y = WALL_H - 0.5;
+    b.position.y = WALL_HEIGHT - 0.5;
     g.add(cone, b);
   } else if (fin.lamp.style === 'globe') {
     const glass = new THREE.Mesh(new THREE.SphereGeometry(0.22, 16, 12), new THREE.MeshStandardMaterial({ color: '#fffaf0', emissive: fin.lamp.color, emissiveIntensity: 0.9, roughness: 0.3 }));
-    glass.position.y = WALL_H - 0.5;
+    glass.position.y = WALL_HEIGHT - 0.5;
     const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.1, 0.08, 12), shade);
-    cap.position.y = WALL_H - 0.3;
+    cap.position.y = WALL_HEIGHT - 0.3;
     g.add(glass, cap);
   } else {
     const can = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.13, 0.22, 14), shade);
-    can.position.y = WALL_H - 0.45;
+    can.position.y = WALL_HEIGHT - 0.45;
     const b = new THREE.Mesh(new THREE.CircleGeometry(0.1, 14).rotateX(Math.PI / 2), bulb);
-    b.position.y = WALL_H - 0.57;
+    b.position.y = WALL_HEIGHT - 0.57;
     g.add(can, b);
   }
   return g;

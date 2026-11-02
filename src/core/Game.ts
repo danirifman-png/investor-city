@@ -65,7 +65,11 @@ import { SleepView } from '../ui/SleepView';
 import { FriendView, gendered, type FriendAction } from '../ui/FriendView';
 import { BEST_GIFT, FRIENDS } from '../content/friends';
 import { TOWN_LINES } from '../content/townsfolk';
-import { chat, finishFavor, friendOf, giveGift, reachPlace, startFavor, takePresent, type FriendChange } from './Friends';
+import { TreasureMarks } from '../world/TreasureMarks';
+import { ESCALATOR, ESCALATORS, escalatorHeight } from '../content/mall';
+import { TREASURE_FRIEND_LEVEL } from '../content/treasure';
+import { nextStep, piecesFound, take, treasureDone } from './Treasure';
+import { chat, finishFavor, friendLevel, friendOf, giveGift, reachPlace, startFavor, takePresent, type FriendChange } from './Friends';
 import { FURNITURE } from '../content/home';
 import { billsFor, noteWorth, payBills, worth, type Worth } from './Life';
 import { add as addNeeds, consume, drain, lowNeeds, needSpeed, sleep as sleepNeeds } from './Needs';
@@ -108,10 +112,10 @@ export function detectQuality(): QualitySettings {
 type Mode = 'title' | 'creator' | 'playing';
 
 /** Something usable next to the player besides characters and buildings. */
-type Near = { kind: 'friend'; id: string } | { kind: 'door'; id: InteriorId } | { kind: 'spot'; room: InteriorId; spot: string } | { kind: 'curio'; id: string } | { kind: 'biz' } | { kind: 'robot' };
+type Near = { kind: 'treasure'; id: string } | { kind: 'friend'; id: string } | { kind: 'door'; id: InteriorId } | { kind: 'spot'; room: InteriorId; spot: string } | { kind: 'curio'; id: string } | { kind: 'biz' } | { kind: 'robot' };
 
 const nearKey = (n: Near | null): string | null =>
-  !n ? null : n.kind === 'friend' ? `friend:${n.id}` : n.kind === 'door' ? `door:${n.id}` : n.kind === 'spot' ? `spot:${n.spot}` : n.kind === 'biz' ? 'biz' : n.kind === 'robot' ? 'robot' : `curio:${n.id}`;
+  !n ? null : n.kind === 'treasure' ? `treasure:${n.id}` : n.kind === 'friend' ? `friend:${n.id}` : n.kind === 'door' ? `door:${n.id}` : n.kind === 'spot' ? `spot:${n.spot}` : n.kind === 'biz' ? 'biz' : n.kind === 'robot' ? 'robot' : `curio:${n.id}`;
 
 /** Where a new player appears: the plaza, facing the stock exchange. */
 /** The close, low over-the-shoulder view of the reference art. */
@@ -193,7 +197,7 @@ export class Game {
   private fading = false;
   private fadeEl: HTMLDivElement;
   /** What the tracker line shows (and opens when tapped). */
-  private trackerKind: 'quest' | 'mission' | 'errand' | null = null;
+  private trackerKind: 'quest' | 'mission' | 'errand' | 'treasure' | null = null;
   readonly questLog: QuestLog;
   readonly bag: Bag;
   readonly shop: PizzaShopView;
@@ -226,6 +230,7 @@ export class Game {
   readonly lifeView: LifeView;
   readonly sleepView = new SleepView();
   readonly friendView: FriendView;
+  private treasureMarks: TreasureMarks;
   /** The day bills were last checked (bills come once per day played). */
   private billDay = -1;
   private billClock = 0;
@@ -236,7 +241,7 @@ export class Game {
   readonly complete: CompleteScreen;
   private questCheck = 0;
   /** What the player started last (leads the tracker until it ends). */
-  private focus: 'quest' | 'mission' | 'errand' | null = null;
+  private focus: 'quest' | 'mission' | 'errand' | 'treasure' | null = null;
 
   constructor(container: HTMLElement, readonly quality: QualitySettings) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -280,6 +285,8 @@ export class Game {
 
     this.interiors = new Interiors(this.city.collision, this.city.materials, this.city.pois);
     this.curios = new Curiosities(this.city.pois, this.interiors);
+    this.treasureMarks = new TreasureMarks(this.city.pois);
+    this.scene.add(this.treasureMarks.group);
     this.collect = new Collectibles(this.city.layout, this.city.collision);
     this.bizSite = new BusinessSite(this.city.collision);
     this.bizSite.setStage(0, '');
@@ -358,7 +365,7 @@ export class Game {
       onJump: () => this.player.jump(),
       onScooter: () => this.toggleScooter(),
       onNotebook: () => this.openNotebook(),
-      onTracker: () => (this.trackerKind === 'mission' ? this.openNotebook('mission') : this.trackerKind === 'quest' ? this.openPanel('quests') : this.hud.openPeople()),
+      onTracker: () => (this.trackerKind === 'treasure' ? undefined : this.trackerKind === 'mission' ? this.openNotebook('mission') : this.trackerKind === 'quest' ? this.openPanel('quests') : this.hud.openPeople()),
       onQuests: () => this.openPanel('quests'),
       onBag: () => this.openPanel('bag'),
       onMoney: () => this.openPanel('money'),
@@ -1101,6 +1108,82 @@ export class Game {
     if (!d.friends[id]) d.friends = { ...d.friends, [id]: friendOf(d.friends, id) };
     this.friendView.show(id);
     this.cam.enabled = false;
+    if (friendLevel(friendOf(d.friends, id).points) >= TREASURE_FRIEND_LEVEL) window.setTimeout(() => this.friendPiece(id), 1400);
+  }
+
+  /** The mall's escalators carry whoever stands on them. */
+  private rideEscalator(dt: number): void {
+    const room = this.interiors.toWorld('mall', 0, 0);
+    const p = this.player.position;
+    const lx = p.x - room.x;
+    const lz = p.z - room.z;
+    for (const e of ESCALATORS) {
+      if (Math.abs(lx - e.x) > ESCALATOR.width / 2 || lz < ESCALATOR.zTop - 0.1 || lz > ESCALATOR.zBottom + (e.dir === 'up' ? 0.9 : 0.1)) continue;
+      // only when actually on the steps (not walking past underneath)
+      if (Math.abs(p.y - escalatorHeight(lz)) > 0.7) continue;
+      p.z += (e.dir === 'up' ? -1 : 1) * ESCALATOR.speed * dt;
+      // keep to the middle of the steps
+      p.x += (room.x + e.x - p.x) * Math.min(1, dt * 3);
+    }
+  }
+
+  /** A friend hands over the map piece they found (when that piece is the next one). */
+  private friendPiece(id: string): void {
+    const d = this.data;
+    if (!d || nextStep(d.treasure)?.kind !== 'friend') return;
+    this.friendView.close();
+    this.town.react(id, 'cheer');
+    this.takeTreasure('friend', t(`friend.${id}.name`));
+  }
+
+  /** Walking into a glowing map piece picks it up. */
+  private checkTreasure(): void {
+    const d = this.data;
+    const at = this.treasureMarks.position;
+    if (!d || !at || this.interiors.current || this.hud.overlayOpen || nextStep(d.treasure)?.kind !== 'free') return;
+    const p = this.player.position;
+    if (Math.hypot(p.x - at.x, p.z - at.z) < 1.5) this.takeTreasure(this.treasureMarks.id!);
+  }
+
+  /** Takes the next treasure step: a piece, the chest or the vault. */
+  private takeTreasure(id: string, from?: string): void {
+    const d = this.data;
+    if (!d) return;
+    const step = nextStep(d.treasure);
+    const r = take(d.treasure, id, d.growth.coins);
+    if (!r) {
+      if (step?.kind === 'chest' && step.id === id) {
+        this.player.animator.play('think');
+        this.showCard({ kind: 'info', kicker: t('treasure.kicker'), title: t('treasure.fountain.next'), body: t('treasure.chestShort', { n: (step.price ?? 0) - d.growth.coins }) });
+      }
+      return;
+    }
+    d.treasure = r.state;
+    d.growth.coins -= r.cost;
+    this.reward({ coins: r.coins, xp: r.xp });
+    this.hud.playerCard.update(d.character.nickname, d.character.topColor, d.growth);
+    const done = treasureDone(d.treasure);
+    const next = nextStep(d.treasure);
+    this.sound.play(done ? 'levelUp' : 'chest');
+    this.player.animator.play('cheer');
+    if (done) {
+      this.fw.show(this.player.position.x, this.player.position.z);
+      this.learn(['interest', 'savings']);
+    }
+    this.focus = 'treasure';
+    this.treasureMarks.show(next);
+    const n = piecesFound(d.treasure);
+    if (!done) this.hud.toast(t('treasure.pieceToast', { n }), 2200);
+    const body = [from ? `${from}: ` : '', t(`treasure.${r.step.id}.body`), r.cost ? ` ${t('treasure.chestPaid', { n: r.coins })}` : ''].join('');
+    this.showCard({
+      kind: 'curio',
+      kicker: t('treasure.kicker'),
+      title: t(`treasure.${r.step.id}.title`),
+      body,
+      note: done ? t('treasure.done') : `${t('treasure.count', { n })} · ${t(`treasure.${next!.id}.next`)}`,
+    });
+    this.updateSocialUi();
+    this.save(false);
   }
 
   private friendAct(id: string, a: FriendAction): string | null {
@@ -1160,6 +1243,7 @@ export class Game {
     }
     if (change) {
       d.friends = change.state;
+      if (friendLevel(friendOf(d.friends, id).points) >= TREASURE_FRIEND_LEVEL) window.setTimeout(() => this.friendPiece(id), 900);
       if (change.levelUp !== null) {
         this.sound.play('levelUp');
         this.town.react(id, 'cheer');
@@ -1251,7 +1335,12 @@ export class Game {
     else if (mission) this.trackerKind = 'mission';
     else if (focus) this.trackerKind = 'errand';
     else this.trackerKind = quest ? 'quest' : null;
-    if (this.trackerKind === 'quest') this.hud.setTracker(quest!.title, quest!.goal);
+    // the treasure leads once a piece was found, while it was the last thing touched or nothing else runs
+    const tr = this.data!.treasure;
+    const trStep = tr.step > 0 ? nextStep(tr) : null;
+    if (trStep && (this.focus === 'treasure' || this.trackerKind === null)) this.trackerKind = 'treasure';
+    if (this.trackerKind === 'treasure') this.hud.setTracker(t('treasure.tracker'), `${t('treasure.count', { n: piecesFound(tr) })} · ${t(`treasure.${trStep!.id}.next`)}`, trStep!.kind === 'vault');
+    else if (this.trackerKind === 'quest') this.hud.setTracker(quest!.title, quest!.goal);
     else if (this.trackerKind === 'mission') this.hud.setTracker(t('mission.tracker'), mission!, this.data!.missions.branch.status === 'done');
     else if (focus) {
       this.hud.setTracker(t(`errand.${focus}.title`), ready ? t('errand.ready', { name: t(`npc.${focus}.short`) }) : t(`errand.${focus}.goal`), !!ready);
@@ -1271,9 +1360,12 @@ export class Game {
     const missionTargets = this.missionTargets();
     const questTargets = this.questTargets();
     targets.push(...missionTargets, ...questTargets);
+    const tpos = this.treasureMarks.position;
+    if (tpos && tr.step > 0) targets.push(tpos);
     this.hud.setMapTargets(targets);
     // the one goal the tracker talks about (the guide and the distance follow it)
-    if (this.trackerKind === 'quest') this.goalTargets = questTargets;
+    if (this.trackerKind === 'treasure') this.goalTargets = tpos ? [tpos] : [];
+    else if (this.trackerKind === 'quest') this.goalTargets = questTargets;
     else if (this.trackerKind === 'mission') this.goalTargets = missionTargets;
     else if (focus) this.goalTargets = this.errandTargets(focus);
     else this.goalTargets = [];
@@ -1370,6 +1462,7 @@ export class Game {
       else if (!blocked && this.input.wasPressed('Space')) this.player.jump();
       if (!blocked && this.input.wasPressed('KeyF')) this.hud.setRiding(this.toggleScooter());
       if (!blocked) this.walkIn(dt);
+      if (this.interiors.current === 'mall') this.rideEscalator(dt);
       if (this.conv || this.sleepView.open) this.hud.setPrompt(null);
       else if (this.nearNpc) this.hud.setPrompt({ id: `npc:${this.nearNpc.id}`, text: t('hud.talk', { name: t(`npc.${this.nearNpc.id}.short`) }) });
       else if (this.nearThing) this.hud.setPrompt(this.thingPrompt(this.nearThing));
@@ -1380,6 +1473,7 @@ export class Game {
         this.errandCheck = 0.3;
         this.checkErrands();
         this.checkFavors();
+        this.checkTreasure();
       }
       this.questCheck -= dt;
       if (this.questCheck <= 0 && !this.conv) {
@@ -1438,6 +1532,8 @@ export class Game {
     const near = nearKey(this.nearThing);
     this.interiors.update(this.elapsed, dt, this.cam.camera, near);
     this.curios.update(this.elapsed, this.interiors.current, this.nearThing?.kind === 'curio' ? this.nearThing.id : null);
+    const tpos = this.treasureMarks.position;
+    if (tpos) this.treasureMarks.update(this.elapsed, this.city.collision.groundHeight(tpos.x, tpos.z, 1));
     this.ambient.update(this.elapsed, dt, playing ? this.player.position : null);
     const said = playing && !this.conv && !this.interiors.current && this.data?.settings.bubbles !== false ? this.ambient.crowd.bubble() : null;
     const local = playing && !this.conv && !this.interiors.current && this.data?.settings.bubbles !== false ? this.town.bubble() : null;
@@ -1483,6 +1579,10 @@ export class Game {
     if (!room && Math.hypot(p.x - bc.x, p.z - bc.z) < BIZ_RANGE) return { kind: 'biz' };
     const bot = this.extras.buddy;
     if (!room && !bot.following && bot.object && Math.hypot(p.x - bot.position.x, p.z - bot.position.z) < ROBOT_RANGE) return { kind: 'robot' };
+    const tp = room ? null : this.treasureMarks.position;
+    const tid = this.treasureMarks.id;
+    const tstep = nextStep(this.data?.treasure ?? { step: 0 });
+    if (tp && tid && tstep && tstep.kind !== 'free' && Math.hypot(p.x - tp.x, p.z - tp.z) < (tstep.kind === 'vault' ? 3.6 : 2.2)) return { kind: 'treasure', id: tid };
     const f = room ? null : this.town.nearest(p, FRIEND_RANGE);
     if (f) return { kind: 'friend', id: f.id };
     return null;
@@ -1539,6 +1639,7 @@ export class Game {
 
   private thingPos(n: Near): { x: number; z: number } | null {
     if (n.kind === 'friend') return this.town.position(n.id);
+    if (n.kind === 'treasure') return this.treasureMarks.position;
     if (n.kind === 'door') return this.interiors.doors.find((d) => d.id === n.id) ?? null;
     if (n.kind === 'curio') return this.curios.position(n.id);
     if (n.kind === 'biz') return this.bizSite.counter;
@@ -1552,6 +1653,7 @@ export class Game {
     if (n.kind === 'biz') return { id, text: t('biz.prompt') };
     if (n.kind === 'robot') return { id, text: t('robot.prompt') };
     if (n.kind === 'friend') return { id, text: t('friend.prompt', { name: t(`friend.${n.id}.name`) }) };
+    if (n.kind === 'treasure') return { id, text: t(nextStep(this.data!.treasure)?.kind === 'vault' ? 'treasure.vaultPrompt' : 'treasure.chestPrompt') };
     if (n.kind === 'curio') {
       const found = this.data?.learning.curiosities.includes(n.id);
       return { id, text: found ? t(`curio.${n.id}.title`) : t('curio.prompt') };
@@ -1565,6 +1667,7 @@ export class Game {
     if (n.kind === 'biz') return this.openBusiness();
     if (n.kind === 'robot') return this.meetRobot();
     if (n.kind === 'friend') return this.openFriend(n.id);
+    if (n.kind === 'treasure') return this.takeTreasure(n.id);
     const spot = INTERIORS[n.room].hotspots.find((h) => h.id === n.spot);
     if (!spot) return;
     const m = this.interiors.marker(n.room, n.spot);
@@ -1577,6 +1680,11 @@ export class Game {
     if (spot.kind === 'life') return this.openLife('home');
     if (spot.kind === 'rest') return this.sleepAtHome();
     if (spot.kind === 'kitchen') return this.useKitchen();
+    if (spot.kind === 'shop') return this.openStore(spot.tab);
+    if (n.room === 'mall' && n.spot === 'lift' && this.data && treasureDone(this.data.treasure)) {
+      this.player.animator.play('think');
+      return this.showCard({ kind: 'info', kicker: t('spot.kicker'), title: t('spot.mall.lift.title'), body: t('spot.mall.lift.bodyDone') });
+    }
     this.player.animator.play('think');
     this.showCard({ kind: 'info', kicker: t('spot.kicker'), title: t(`spot.${n.room}.${n.spot}.title`), body: t(`spot.${n.room}.${n.spot}.body`) });
   }
@@ -1847,6 +1955,7 @@ export class Game {
       this.hud.setRiding(false);
       this.interiors.setInside(id);
       this.curios.setInside(id);
+      this.treasureMarks.setInside(true);
       this.city.root.visible = false;
       this.ambient.group.visible = false;
       for (const a of this.npcs.actors) a.object.visible = a.id === def.npc?.id;
@@ -1880,6 +1989,7 @@ export class Game {
       this.interiors.setInside(null);
       window.setTimeout(() => this.updateMusic(), 0);
       this.curios.setInside(null);
+      this.treasureMarks.setInside(false);
       this.city.root.visible = true;
       this.ambient.group.visible = true;
       for (const a of this.npcs.actors) {
@@ -2156,6 +2266,7 @@ export class Game {
     const b = d.missions.branch;
     if (b.status === 'locked' && hasFlag(d.social, 'branch.started')) b.status = 'active';
     this.curios.setFound(d.learning.curiosities);
+    this.treasureMarks.show(nextStep(d.treasure));
     this.collect.restore(d.found);
     this.sky.restore(d.found);
     this.bizSite.setStage(d.missions.business.stage, this.ownerName());

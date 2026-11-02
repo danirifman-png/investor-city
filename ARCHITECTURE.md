@@ -371,3 +371,23 @@ Walk up to one and press E (or tap the prompt) to open `ui/FriendView`.
 Sleep (`ui/SleepView`): the hero lies on the bed (`PlayerController.lieDown`),
 the night overlay fills energy over a few seconds, and "skip to morning" ends it
 at once. With a table at home, a meal is eaten at the table.
+
+## The founder's treasure
+
+The city's big mystery (`content/treasure.ts`, `core/Treasure.ts`,
+`world/TreasureMarks.ts`, text in `he.treasure.json`). Seven map pieces, then
+a vault by the bank. Only the next step shows in the world: a glowing scroll
+(walk into it), the fountain's chest (a 10-coin lock that pays back 22), a
+piece a street friend hands over at one heart, and the vault door. Each piece's
+card says where the next one is; once a piece is found the tracker and the
+guide footprints point to the next. Saved as `treasure: { step }`.
+The friends' secrets (level 3) are hints about it.
+
+## The mall
+
+`content/mall.ts` holds the sizes and the escalators; `world/interiors/mall.ts`
+builds it. The upper floor is a gallery along the back at 3.6 m; the escalator
+steps are real collision stairs (12 × 0.3 m), and `Game.rideEscalator` carries
+the player along them. Shop spots (`kind: 'shop'`, `tab`) open the shop on that
+tab. Interiors with `wallH` get taller walls, no hanging lamps, and spots on the
+other floor are out of reach.
