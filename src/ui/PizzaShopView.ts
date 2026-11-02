@@ -20,6 +20,8 @@ import { h, iconButton } from './dom';
 export interface PizzaShopHooks {
   /** The day ended; the game hands out rewards and saves. */
   onDayDone(level: ShopLevel, summary: DaySummary): void;
+  /** Work the shift in the kitchen; the game runs it and calls `showShift`. */
+  onServe(day: ShopDay, plan: ShiftPlan): void;
   onClose(): void;
 }
 
@@ -163,7 +165,7 @@ export class PizzaShopView {
       t('shop.kicker'),
       t('shop.planTitle'),
       [forecast, doughRow, priceRow, fixedNote, costOut],
-      [this.button(t('shop.open'), () => this.play())],
+      [this.button(t('service.kitchen'), () => this.hooks.onServe(this.day!, clampPlan(this.day!.level, this.plan))), this.button(t('service.marco'), () => this.play(), false)],
     );
   }
 
@@ -174,14 +176,21 @@ export class PizzaShopView {
     if (r) this.drawResult(r);
   }
 
-  private drawResult(r: ShiftResult): void {
+  /** Back from a shift worked in the kitchen. */
+  showShift(r: ShiftResult): void {
+    this.el.hidden = false;
+    this.drawResult(r, true);
+  }
+
+  /** `served`: the player worked the kitchen, so missed customers may also be ones not served in time. */
+  private drawResult(r: ShiftResult, served = false): void {
     const day = this.day!;
     const line = (label: string, value: string, cls = '') => h('div', { class: `shop-line ${cls}` }, [h('span', {}, [label]), h('strong', {}, [value])]);
     const money = (n: number) => t('shop.coins', { n });
     const table = h('div', { class: 'shop-table' }, [
       line(t('shop.r.customers'), String(r.wanted)),
       line(t('shop.r.sold'), String(r.sold)),
-      r.missed ? line(t('shop.r.missed'), String(r.missed), 'bad') : null,
+      r.missed ? line(t(served ? 'service.r.missed' : 'shop.r.missed'), String(r.missed), 'bad') : null,
       r.wasted ? line(t('shop.r.wasted'), String(r.wasted), 'bad') : null,
       line(t('shop.r.revenue'), money(r.revenue), 'plus'),
       line(t('shop.r.variable'), `-${money(r.variableCost)}`, 'minus'),

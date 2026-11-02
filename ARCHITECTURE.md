@@ -391,3 +391,38 @@ steps are real collision stairs (12 × 0.3 m), and `Game.rideEscalator` carries
 the player along them. Shop spots (`kind: 'shop'`, `tab`) open the shop on that
 tab. Interiors with `wallH` get taller walls, no hanging lamps, and spots on the
 other floor are out of reach.
+
+## Working the counter (service)
+
+`core/Service.ts` is a pure run of one shift at a counter: `planService` turns
+the day's demand into customer arrivals, and `ServiceRun.update(dt)` returns
+events (arrive, give up, leave) while the player presses the recipe steps
+(`RECIPES.lemonade`, `RECIPES.pizza`; the oven has a wait) and serves. The
+result goes through `Business.playServedDay` / `PizzaShop.playServedShift`,
+so the same settlement and stars apply as when the worker runs the day.
+`world/ServiceQueue.ts` lines townsfolk avatars up at the counter and
+`ui/ServiceView.ts` is the docked panel; `Game.startService`,
+`startPizzaService` and `endService` set the camera, hide the markers and
+restore everything.
+
+## Jobs around the city
+
+`content/jobs.ts` lists the 11 workplaces (by POI) with pay and level;
+`core/Jobs.ts` builds a shift of short tasks, a payslip (arrival pay, pay per
+right answer, income tax from level 4, net) and records shifts. Only the first
+shift of the day at a place is paid; later ones are practice. The POI card
+offers "work here" (`Hud` hooks `jobAt`/`onWork`) and `ui/JobView.ts` runs the
+shift.
+
+## Weather and the album of moments
+
+`Business.cityWeatherFor(dayKey)` is the city's weather of the day. The sky
+blends toward it (`Atmosphere.setWeather`: overcast, rain with falling streaks
+outdoors only, or a hot hazy day), and the lemonade forecast leans on it so
+what the player sees outside matches the forecast. While the stand is open the
+sky shows that day's actual weather.
+
+`core/Album.ts` reads first times (first payslip, first share, a home...) from
+the saved state whenever the game saves and keeps the day each happened. It is
+shown at the end of the quest log. Old saves get their existing moments
+quietly, undated.

@@ -2,6 +2,7 @@ import { ITEMS, type ItemId } from '../content/items';
 import type { NpcId } from '../content/npcs';
 import { QUESTS, type QuestDef } from '../content/quests';
 import { levelInfo, type ProgressionState, type QuestProgress, type Reward } from '../core/Progression';
+import { MOMENT_IDS, type Album } from '../core/Album';
 import type { Settings } from '../core/Save';
 import { t } from '../i18n';
 import { h, iconButton } from './dom';
@@ -114,6 +115,9 @@ export interface QuestLogView {
   errands: { npc: NpcId; state: 'active' | 'ready' | 'done' }[];
   /** Marco's branch mission line, or null when it is not running. */
   mission: { line: string; done: boolean } | null;
+  /** The album of moments and today's day index (for "today" / "N days ago"). */
+  album: Album;
+  today: number;
 }
 
 function stepText(def: QuestDef, i: number, q: QuestProgress | undefined): string {
@@ -192,7 +196,31 @@ export class QuestLog {
       sections.push(h('h3', {}, [t('quests.done')]), ...done);
       if (v.mission?.done) sections.push(h('div', { class: 'ql-quest done' }, [h('div', { class: 'ql-head' }, [h('span', { class: 'ql-icon' }, ['✓']), h('strong', {}, [t('quests.branch')])])]));
     }
+    sections.push(this.albumSection(v.album, v.today));
     this.body.replaceChildren(...sections);
+  }
+
+  /** The album: moments that happened, with when; the rest as quiet hints. */
+  private albumSection(album: Album, today: number): HTMLElement {
+    const had = MOMENT_IDS.filter((id) => album[id] !== undefined).sort((a, b) => album[b]! - album[a]!);
+    const next = MOMENT_IDS.filter((id) => album[id] === undefined);
+    const when = (day: number) => (day < 0 ? '' : day >= today ? t('album.today') : day === today - 1 ? t('album.yesterday') : t('album.daysAgo', { n: today - day }));
+    return h('section', { class: 'album' }, [
+      h('h3', {}, [t('album.title'), h('span', { class: 'album-count' }, [t('album.count', { n: had.length, total: MOMENT_IDS.length })])]),
+      had.length ? null : h('p', { class: 'ql-empty' }, [t('album.empty')]),
+      h(
+        'ul',
+        { class: 'album-list' },
+        had.map((id) =>
+          h('li', { class: `album-moment m-${id}` }, [
+            h('strong', {}, [t(`album.${id}.title`)]),
+            h('span', { class: 'album-when' }, [when(album[id]!)]),
+            h('p', {}, [t(`album.${id}.body`)]),
+          ]),
+        ),
+      ),
+      next.length ? h('details', { class: 'album-next' }, [h('summary', {}, [t('album.next', { n: next.length })]), h('ul', {}, next.map((id) => h('li', {}, [t(`album.${id}.hint`)])))]) : null,
+    ]);
   }
 
   private questCard(def: QuestDef, q: QuestProgress): HTMLElement {

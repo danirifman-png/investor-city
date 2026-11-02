@@ -35,6 +35,9 @@ export interface HudOptions {
   onSelectPoi(id: string | null): void;
   onTravel(zone: ZoneId): void;
   onVisitPoi(id: string): void;
+  /** The job at a place, if any (shown as a "work here" button on its card). */
+  jobAt?(key: string): { locked: number | null } | null;
+  onWork?(key: string): void;
   onInteract(): void;
   onSave(): void;
   onEditCharacter(): void;
@@ -673,7 +676,15 @@ export class Hud {
     ];
     if (ENTERABLE.has(poi.key)) parts.push(h('p', { class: 'soon enter' }, [t('hud.canEnter')]));
     else if (COMING_SOON.has(poi.key)) parts.push(h('p', { class: 'soon' }, [t('hud.comingSoon')]));
-    parts.push(h('div', { class: 'card-actions' }, [go]));
+    const job = this.o.jobAt?.(poi.key);
+    const actions: HTMLElement[] = [go];
+    if (job) {
+      const work = h('button', { class: 'primary-btn job-here', type: 'button' }, [job.locked ? t('job.locked', { n: job.locked }) : t('job.workHere')]);
+      work.disabled = !!job.locked;
+      work.addEventListener('click', () => this.o.onWork?.(poi.key));
+      actions.unshift(work);
+    }
+    parts.push(h('div', { class: 'card-actions' }, actions));
     this.card.replaceChildren(...parts);
     this.card.hidden = false;
   }

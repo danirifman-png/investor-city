@@ -237,3 +237,37 @@ export function sanitizeShopRecord(raw: unknown): ShopRecord {
   out.days = Number.isFinite(days) ? Math.max(0, Math.floor(days)) : 0;
   return out;
 }
+
+/** Plays the next shift worked in the kitchen: only the pizzas actually served count as sold. */
+export function playServedShift(day: ShopDay, plan: ShiftPlan, served: number): ShiftResult | null {
+  const i = day.results.length;
+  if (i >= day.actual.length) return null;
+  const event = day.actual[i];
+  const rules = LEVEL_RULES[day.level];
+  const p = clampPlan(day.level, plan);
+  const wanted = demand(DAY_EVENTS[event], p.price);
+  const sold = Math.max(0, Math.min(served, wanted, p.dough));
+  const revenue = sold * p.price;
+  const variableCost = p.dough * rules.doughCost;
+  const result: ShiftResult = {
+    plan: p,
+    event,
+    wanted,
+    sold,
+    missed: wanted - sold,
+    wasted: p.dough - sold,
+    revenue,
+    variableCost,
+    fixedCost: rules.fixedCost,
+    profit: revenue - variableCost - rules.fixedCost,
+    bestProfit: bestPlan(day.level, event).profit,
+  };
+  day.results.push(result);
+  return result;
+}
+
+/** How many customers come to the next shift at this price. */
+export function shiftDemand(day: ShopDay, price: number): number {
+  const event = day.actual[day.results.length];
+  return event ? demand(DAY_EVENTS[event], price) : 0;
+}

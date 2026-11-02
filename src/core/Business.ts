@@ -146,10 +146,27 @@ export function sanitizeBusinessRecord(v: unknown): BusinessRecord {
   };
 }
 
-/** A new business day. The forecast is sure at the stand and gets less sure as the business grows. */
-export function newBizDay(stage: BizStage, city: CityEventId, seed: number): BizDay {
+/** How often each weather is the city's weather of the day (out of 20). */
+const WEATHER_ODDS: [WeatherId, number][] = [['sunny', 8], ['hot', 4], ['cloudy', 5], ['rain', 3]];
+
+/** The city's weather for a calendar day: the sky shows it and the business forecast leans on it. */
+export function cityWeatherFor(key: string): WeatherId {
+  let h = 2166136261;
+  for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 16777619);
+  const rng = mulberry32((h ^ 0x9e3779b9) >>> 0);
+  let roll = rng() * 20;
+  for (const [id, n] of WEATHER_ODDS) if ((roll -= n) < 0) return id;
+  return 'sunny';
+}
+
+/**
+ * A new business day. The forecast is sure at the stand and gets less sure as the business grows.
+ * `likely` is today's city weather when known, so the sky outside matches the forecast.
+ */
+export function newBizDay(stage: BizStage, city: CityEventId, seed: number, likelyWeather?: WeatherId): BizDay {
   const rng = mulberry32(seed);
-  const likely = WEATHER_ORDER[Math.floor(rng() * WEATHER_ORDER.length)];
+  const rolled = WEATHER_ORDER[Math.floor(rng() * WEATHER_ORDER.length)];
+  const likely = likelyWeather ?? rolled;
   let other: WeatherId;
   do other = WEATHER_ORDER[Math.floor(rng() * WEATHER_ORDER.length)];
   while (other === likely);
@@ -261,4 +278,32 @@ export function bizTip(r: BizResult): 'great' | 'missed' | 'wasted' | 'price' | 
   if (r.missed > Math.max(3, r.wanted * 0.15)) return 'missed';
   if (r.wasted > Math.max(3, r.plan.cups * 0.15)) return 'wasted';
   return 'price';
+}
+
+/**
+ * The day's result when the player worked the counter: the people who came
+ * are the same as in `playBizDay`, but only the cups actually served count as
+ * sold (customers who waited too long or found the line too long went home).
+ */
+export function playServedDay(day: BizDay, plan: BizPlan, sold: number): BizResult {
+  const r = STAGE_RULES[day.stage];
+  const p = clampBizPlan(day.stage, plan);
+  const wanted = bizDemand(day.stage, day.weather, day.city, p.price);
+  const s = Math.max(0, Math.min(sold, wanted, p.cups));
+  const revenue = s * p.price;
+  const cupCost = p.cups * r.cupCost;
+  return {
+    plan: p,
+    weather: day.weather,
+    city: day.city,
+    wanted,
+    sold: s,
+    missed: wanted - s,
+    wasted: p.cups - s,
+    revenue,
+    cupCost,
+    fixedCost: r.fixedCost,
+    profit: revenue - cupCost - r.fixedCost,
+    bestProfit: bestBizPlan(day.stage, day.weather, day.city).profit,
+  };
 }

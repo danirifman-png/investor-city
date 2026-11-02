@@ -16,6 +16,7 @@ import {
   type MoneyState,
 } from '../core/Money';
 import type { Worth } from '../core/Life';
+import type { CityEventId } from '../core/Business';
 import { t } from '../i18n';
 import { h, iconButton } from './dom';
 
@@ -29,31 +30,54 @@ export interface MoneyHooks {
   onTab?(tab: MoneyTab): void;
   /** Opens the mall. */
   onStore?(): void;
+  /** Today's city event (the newspaper's headline). */
+  cityEvent?(): CityEventId;
   /** Net worth today, the level, recent history and today's bills. */
   worth?(): { worth: Worth; level: number; history: { day: number; net: number }[]; bills: number } | null;
 }
 
 export type MoneyTab = 'worth' | 'savings' | 'shares';
 
-const COMPANY_ICON: Record<CompanyId, string> = { marco: '🍕', wind: '🌬️', startup: '🚀', bank: '🏦', builder: '🏗️' };
+/** A photo from the city for a company or the bank (falls back to a coloured panel). */
+function picture(id: string): HTMLElement {
+  const img = h('img', { class: 'money-photo', src: `img/money/${id}.jpg`, alt: '', decoding: 'async' }) as HTMLImageElement;
+  img.addEventListener('error', () => (img.style.visibility = 'hidden'));
+  return h('div', { class: `money-photo-box ph-${id}` }, [img]);
+}
 
-/** A small line chart of recent prices, coloured by whether the price went up. */
-function sparkline(values: number[]): SVGSVGElement {
-  const w = 96;
-  const hgt = 30;
+/** A line chart with a soft fill, the high and low marked, and labels for its two ends. */
+function lineChart(values: number[], o: { from: string; to: string; up: boolean }): HTMLElement {
+  const w = 300;
+  const hgt = 90;
   const lo = Math.min(...values);
   const hi = Math.max(...values);
   const span = Math.max(1, hi - lo);
-  const pts = values.map((v, i) => `${((i / Math.max(1, values.length - 1)) * w).toFixed(1)},${(hgt - 3 - ((v - lo) / span) * (hgt - 6)).toFixed(1)}`).join(' ');
-  const up = values[values.length - 1] >= values[0];
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  const x = (i: number) => (i / Math.max(1, values.length - 1)) * w;
+  const y = (v: number) => 8 + (1 - (v - lo) / span) * (hgt - 16);
+  const pts = values.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  const ns = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(ns, 'svg');
   svg.setAttribute('viewBox', `0 0 ${w} ${hgt}`);
-  svg.setAttribute('class', `spark ${up ? 'up' : 'down'}`);
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.setAttribute('class', `chart ${o.up ? 'up' : 'down'}`);
   svg.setAttribute('aria-hidden', 'true');
-  const line = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+  const area = document.createElementNS(ns, 'polygon');
+  area.setAttribute('points', `0,${hgt} ${pts} ${w},${hgt}`);
+  area.setAttribute('class', 'chart-area');
+  const line = document.createElementNS(ns, 'polyline');
   line.setAttribute('points', pts);
-  svg.appendChild(line);
-  return svg;
+  line.setAttribute('class', 'chart-line');
+  const dot = document.createElementNS(ns, 'circle');
+  dot.setAttribute('cx', String(x(values.length - 1)));
+  dot.setAttribute('cy', String(y(values[values.length - 1])));
+  dot.setAttribute('r', '4');
+  dot.setAttribute('class', 'chart-dot');
+  svg.append(area, line, dot);
+  return h('div', { class: 'chart-box' }, [
+    h('div', { class: 'chart-range' }, [h('span', {}, [t('money.chart.high', { n: hi })]), h('span', {}, [t('money.chart.low', { n: lo })])]),
+    svg as unknown as HTMLElement,
+    h('div', { class: 'chart-axis' }, [h('span', {}, [o.from]), h('span', {}, [o.to])]),
+  ]);
 }
 
 /**
@@ -108,7 +132,7 @@ export class MoneyView {
     const body = this.tab === 'worth' ? this.worth() : this.tab === 'savings' ? this.savings(v.wallet, v.money) : this.shares(v.wallet, v.money);
     this.panel.replaceChildren(
       iconButton('close', t('hud.close'), () => this.close(), 'modal-close'),
-      h('div', { class: 'card-kicker' }, [h('span', { class: 'shop-kicker-icon', 'aria-hidden': 'true' }, ['💰']), t('money.kicker')]),
+      h('div', { class: 'card-kicker' }, [t('money.kicker')]),
       h('h2', {}, [t('money.title')]),
       tabs,
       wallet,
@@ -183,27 +207,34 @@ export class MoneyView {
       this.hooks.commit(wallet + w.coins, { ...money, savings: w.savings }, []);
       this.draw();
     };
-    const table = h('div', { class: 'shop-table' }, [
-      this.line(t('money.balance'), t('shop.coins', { n: bal }), 'plus'),
-      this.line(t('money.rate'), t('money.rateValue', { pct: Math.round(SAVINGS_RATE * 100) })),
-      this.line(t('money.earned'), t('shop.coins', { n: Math.floor(s.interest) })),
-    ]);
     const base = Math.max(bal, 100);
-    const future = h('div', { class: 'shop-cost money-future' }, [
+    const days = Array.from({ length: 31 }, (_, d) => Math.floor(grow(base, d)));
+    const hero = h('div', { class: 'money-hero savings' }, [
+      picture('savings'),
+      h('div', { class: 'money-hero-text' }, [
+        h('span', {}, [t('money.balance')]),
+        h('strong', { class: 'money-big' }, [t('shop.coins', { n: bal })]),
+        h('span', { class: 'money-sub' }, [t('money.earnedLine', { n: Math.floor(s.interest), pct: Math.round(SAVINGS_RATE * 100) })]),
+      ]),
+    ]);
+    const chart = h('div', { class: 'money-chart-box' }, [
       h('strong', {}, [t('money.futureTitle', { n: base })]),
-      h('span', {}, [t('money.future', { d7: Math.floor(grow(base, 7)), d30: Math.floor(grow(base, 30)) })]),
+      lineChart(days, { from: t('money.chart.today'), to: t('money.chart.month'), up: true }),
+      h('span', { class: 'money-sub' }, [t('money.future', { d7: days[7], d30: days[30] })]),
     ]);
     return [
+      hero,
       h('p', { class: 'card-body' }, [t('money.savingsIntro')]),
-      table,
-      future,
-      h('div', { class: 'shop-row' }, [
-        h('span', { class: 'shop-label' }, [t('money.deposit')]),
-        h('div', { class: 'shop-prices money-deposit' }, [this.btn('10', () => dep(10), wallet < 1), this.btn('50', () => dep(50), wallet < 1), this.btn(t('money.all'), () => dep(wallet), wallet < 1)]),
-      ]),
-      h('div', { class: 'shop-row' }, [
-        h('span', { class: 'shop-label' }, [t('money.withdraw')]),
-        h('div', { class: 'shop-prices' }, [this.btn('10', () => out(10), bal < 1), this.btn(t('money.all'), () => out(bal), bal < 1)]),
+      chart,
+      h('div', { class: 'money-actions' }, [
+        h('div', { class: 'money-action' }, [
+          h('span', { class: 'shop-label' }, [t('money.deposit')]),
+          h('div', { class: 'shop-prices money-deposit' }, [this.btn('10', () => dep(10), wallet < 1), this.btn('50', () => dep(50), wallet < 1), this.btn(t('money.all'), () => dep(wallet), wallet < 1)]),
+        ]),
+        h('div', { class: 'money-action' }, [
+          h('span', { class: 'shop-label' }, [t('money.withdraw')]),
+          h('div', { class: 'shop-prices' }, [this.btn('10', () => out(10), bal < 1), this.btn(t('money.all'), () => out(bal), bal < 1)]),
+        ]),
       ]),
       h('p', { class: 'shop-note' }, [t('money.savingsNote')]),
     ];
@@ -214,14 +245,33 @@ export class MoneyView {
   private shares(wallet: number, money: MoneyState): HTMLElement[] {
     const today = this.today();
     const p = money.portfolio;
-    const rows = COMPANY_IDS.map((id) => {
-      const hist = history(id, today, 14);
+    const { value, paid } = portfolioValue(p, today);
+    const gain = value - paid;
+    const prices = Object.fromEntries(COMPANY_IDS.map((id) => [id, history(id, today, 14)])) as Record<CompanyId, number[]>;
+    // what the portfolio is made of
+    const parts = COMPANY_IDS.map((id) => ({ id, v: (p.shares[id] ?? 0) * prices[id][prices[id].length - 1] })).filter((x) => x.v > 0);
+    const mix = h(
+      'div',
+      { class: 'money-mix', role: 'img', 'aria-label': parts.map((x) => `${t(`company.${x.id}`)} ${Math.round((x.v / Math.max(1, value)) * 100)}%`).join(', ') },
+      parts.map((x) => h('span', { class: `mix-${x.id}`, style: `flex:${x.v}` })),
+    );
+    const summary = h('div', { class: 'money-summary' }, [
+      h('span', {}, [t('money.portfolio')]),
+      h('strong', { class: 'money-big' }, [t('shop.coins', { n: value })]),
+      paid
+        ? h('span', { class: `money-sub ${gain > 0 ? 'up' : gain < 0 ? 'down' : ''}` }, [t(gain > 0 ? 'money.gainLine' : gain < 0 ? 'money.lossLine' : 'money.evenLine', { n: Math.abs(gain), paid, pct: Math.round((Math.abs(gain) / Math.max(1, paid)) * 100) })])
+        : h('span', { class: 'money-sub' }, [t('money.emptyPortfolio')]),
+      parts.length ? mix : null,
+      parts.length ? h('div', { class: 'money-mix-legend' }, parts.map((x) => h('span', {}, [h('i', { class: `mix-${x.id}` }), t(`company.${x.id}`)]))) : null,
+      p.realized ? h('span', { class: 'money-sub' }, [t('money.realizedLine', { n: `${p.realized >= 0 ? '+' : ''}${p.realized}` })]) : null,
+    ]);
+    const cards = COMPANY_IDS.map((id) => {
+      const hist = prices[id];
       const price = hist[hist.length - 1];
       const prev = hist[hist.length - 2] ?? price;
       const ch = prev ? Math.round(((price - prev) / prev) * 1000) / 10 : 0;
       const held = p.shares[id] ?? 0;
-      const paid = p.paid[id] ?? 0;
-      const gain = held * price - paid;
+      const mine = held * price - (p.paid[id] ?? 0);
       const doBuy = () => {
         const b = buy(p, id, 1, wallet, today);
         if (!b.cost) return;
@@ -236,37 +286,51 @@ export class MoneyView {
         this.hooks.commit(wallet + s.coins, { ...money, portfolio: s.portfolio }, ['profit']);
         this.draw();
       };
-      return h('div', { class: 'stock', 'data-company': id }, [
-        h('div', { class: 'stock-head' }, [
-          h('span', { class: 'stock-icon', 'aria-hidden': 'true' }, [COMPANY_ICON[id]]),
-          h('div', { class: 'stock-name' }, [
+      const risk = COMPANIES[id].risk;
+      return h('article', { class: 'stock', 'data-company': id }, [
+        h('div', { class: 'stock-photo' }, [picture(id), h('span', { class: `stock-risk r${risk}` }, [t(`money.riskWord.${risk}`)])]),
+        h('div', { class: 'stock-body' }, [
+          h('div', { class: 'stock-title' }, [
             h('strong', {}, [t(`company.${id}`)]),
-            h('span', { class: 'stock-risk', 'aria-label': t('money.risk', { n: COMPANIES[id].risk }) }, [t('money.riskShort') + ' ' + '●'.repeat(COMPANIES[id].risk) + '○'.repeat(3 - COMPANIES[id].risk)]),
+            h('div', { class: 'stock-price' }, [
+              h('strong', {}, [t('shop.coins', { n: price })]),
+              h('span', { class: ch > 0 ? 'up' : ch < 0 ? 'down' : '' }, [ch === 0 ? t('money.flat') : t(ch > 0 ? 'money.upToday' : 'money.downToday', { n: Math.abs(ch) })]),
+            ]),
           ]),
-          sparkline(hist),
-          h('div', { class: 'stock-price' }, [
-            h('strong', {}, [t('shop.coins', { n: price })]),
-            h('span', { class: ch > 0 ? 'up' : ch < 0 ? 'down' : '' }, [`${ch > 0 ? '▲' : ch < 0 ? '▼' : '•'} ${Math.abs(ch)}%`]),
+          h('p', { class: 'stock-about' }, [t(`company.${id}.about`)]),
+          lineChart(hist, { from: t('money.chart.twoWeeks'), to: t('money.chart.today'), up: price >= hist[0] }),
+          h('div', { class: 'stock-foot' }, [
+            h('span', { class: 'stock-held' }, [
+              held ? t(held === 1 ? 'money.heldOne' : 'money.held', { n: held, value: held * price }) : t('money.none'),
+              held ? h('b', { class: mine >= 0 ? 'up' : 'down' }, [` (${mine >= 0 ? '+' : ''}${mine})`]) : null,
+            ]),
+            h('div', { class: 'shop-prices' }, [this.btn(t('money.buyFor', { n: price }), doBuy, wallet < price, 'shop-price stock-buy'), this.btn(t('money.sell'), doSell, held < 1)]),
           ]),
-        ]),
-        h('div', { class: 'stock-foot' }, [
-          h('span', { class: 'stock-held' }, [
-            held ? t('money.held', { n: held, value: held * price }) : t('money.none'),
-            held ? h('b', { class: gain >= 0 ? 'up' : 'down' }, [` ${gain >= 0 ? '+' : ''}${gain}`]) : null,
-          ]),
-          h('div', { class: 'shop-prices' }, [this.btn(t('money.buy'), doBuy, wallet < price, 'shop-price stock-buy'), this.btn(t('money.sell'), doSell, held < 1)]),
         ]),
       ]);
     });
-    const { value, paid } = portfolioValue(p, today);
-    const total = h('div', { class: 'shop-table' }, [
-      this.line(t('money.portfolio'), t('shop.coins', { n: value }), 'plus'),
-      paid ? this.line(t('money.gain'), `${value - paid >= 0 ? '+' : ''}${value - paid}`, value - paid >= 0 ? 'plus' : 'minus') : null,
-      p.realized ? this.line(t('money.realized'), `${p.realized >= 0 ? '+' : ''}${p.realized}`, p.realized >= 0 ? 'plus' : 'minus') : null,
-    ]);
     const n = spread(p);
     const tip = h('p', { class: 'shop-tip' }, [t(n === 0 ? 'money.tip.start' : n < 3 ? 'money.tip.spread' : 'money.tip.good')]);
-    return [h('p', { class: 'card-body' }, [t('money.sharesIntro')]), ...rows, total, tip, h('p', { class: 'shop-note' }, [t('money.sharesNote')])];
+    return [summary, ...[this.news()].filter((x): x is HTMLDivElement => !!x), h('p', { class: 'card-body' }, [t('money.sharesIntro')]), ...cards, tip, h('p', { class: 'shop-note' }, [t('money.sharesNote')])];
+  }
+
+  /** The city newspaper: today's event and which companies it helps or hurts. */
+  private news(): HTMLDivElement | null {
+    const ev = this.hooks.cityEvent?.();
+    if (!ev) return null;
+    const hit = COMPANY_IDS.map((id) => ({ id, k: COMPANIES[id].events[ev] ?? 0 })).filter((x) => x.k !== 0);
+    return h('div', { class: 'money-news' }, [
+      h('div', { class: 'money-news-head' }, [t('news.paper')]),
+      h('strong', { class: 'money-news-title' }, [t(`news.headline.${ev}`)]),
+      h(
+        'p',
+        {},
+        hit.length
+          ? [hit.map((x) => t(x.k > 0 ? 'news.helps' : 'news.hurts', { name: t(`company.${x.id}`) })).join(' ')]
+          : [t('news.quiet')],
+      ),
+      h('small', {}, [t('news.note')]),
+    ]);
   }
 
   private line(label: string, value: string, cls = ''): HTMLElement {

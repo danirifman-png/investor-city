@@ -1,3 +1,5 @@
+import { addMoments, newMoments, sanitizeAlbum, type Album } from './Album';
+import { sanitizeJobs, type JobRecord } from './Jobs';
 import { newTreasure, sanitizeTreasure, type TreasureState } from './Treasure';
 import { sanitizeFriends, type FriendsState } from './Friends';
 import { sanitizeMissionRecord, type MissionRecord } from './BuildingMissions';
@@ -79,6 +81,10 @@ export interface SaveData {
   friends: FriendsState;
   /** The founder's treasure (added without a version bump: missing means not started). */
   treasure: TreasureState;
+  /** Shifts worked at jobs around the city (added without a version bump: missing means none). */
+  jobs: JobRecord;
+  /** The album of moments: first times and the day they happened (added without a version bump). */
+  album: Album;
 }
 
 export interface StorageLike {
@@ -107,6 +113,8 @@ export function newSave(character: CharacterLook, now = Date.now()): SaveData {
     needs: newNeeds(),
     friends: {},
     treasure: newTreasure(),
+    jobs: {},
+    album: {},
     learning: { concepts: [], curiosities: [] },
     growth: newProgression(),
   };
@@ -155,6 +163,9 @@ export function migrate(raw: unknown): SaveData | null {
   base.needs = sanitizeNeeds(src.needs);
   base.friends = sanitizeFriends(src.friends);
   base.treasure = sanitizeTreasure(src.treasure);
+  base.jobs = sanitizeJobs(src.jobs);
+  // saves from before the album get the moments they already had, quietly and undated (-1)
+  base.album = src.album === undefined ? addMoments({}, newMoments({}, base), -1) : sanitizeAlbum(src.album);
   base.found = Array.isArray(src.found) ? [...new Set(src.found.filter((x): x is string => typeof x === 'string' && x.length < 40))].slice(0, 400) : [];
   const learning = (src.learning ?? {}) as Record<string, unknown>;
   const pick = (list: unknown, allowed: readonly string[]) =>

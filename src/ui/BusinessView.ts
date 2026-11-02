@@ -27,8 +27,12 @@ export interface BusinessHooks {
   onUpgrade(): BusinessRecord;
   /** The player takes the till home. Returns the new record. */
   onTakeHome(): BusinessRecord;
+  /** Work the counter for the day (the game runs it and calls `showResult`). */
+  onServe(day: BizDay, plan: BizPlan): void;
   /** The calendar day's city event. */
   cityEvent(): CityEventId;
+  /** Today's weather in the city sky. */
+  weather?(): WeatherId;
   onClose(): void;
 }
 
@@ -192,7 +196,7 @@ export class BusinessView {
 
   private startDay(): void {
     const rec = this.rec!;
-    this.day = newBizDay(rec.stage, this.hooks.cityEvent(), (Date.now() ^ (Math.random() * 1e9)) >>> 0);
+    this.day = newBizDay(rec.stage, this.hooks.cityEvent(), (Date.now() ^ (Math.random() * 1e9)) >>> 0, this.hooks.weather?.());
     const r = STAGE_RULES[rec.stage];
     this.plan = clampBizPlan(rec.stage, { cups: Math.round(r.customers * 0.8), price: 5 });
     this.drawPlan();
@@ -236,7 +240,8 @@ export class BusinessView {
     ]);
     refresh();
     this.frame(t('biz.planTitle'), [this.cityBanner(), forecast, cupsRow, priceRow, costOut], [
-      this.button(t('biz.openNow'), () => this.play()),
+      this.button(t('service.work'), () => this.hooks.onServe(this.day!, clampBizPlan(this.day!.stage, this.plan))),
+      this.button(t('service.auto'), () => this.play(), false),
       this.button(t('biz.back'), () => this.drawHome(), false),
     ]);
   }
@@ -251,12 +256,23 @@ export class BusinessView {
     this.drawResult(r, stars);
   }
 
-  private drawResult(r: BizResult, stars: number): void {
+  /** After a day worked at the counter: the same result screen. */
+  showResult(r: BizResult, left: { waited: number; line: number }): void {
+    const stars = bizStars(r);
+    this.rec = this.hooks.onDay(r, stars);
+    this.day = null;
+    this.el.hidden = false;
+    this.drawResult(r, stars, left);
+  }
+
+  private drawResult(r: BizResult, stars: number, left?: { waited: number; line: number }): void {
     const money = (n: number) => t('shop.coins', { n });
     const table = h('div', { class: 'shop-table' }, [
       this.line(t('biz.r.customers'), String(r.wanted)),
       this.line(t('biz.r.sold'), String(r.sold)),
-      r.missed ? this.line(t('biz.r.missed'), String(r.missed), 'bad') : null,
+      r.missed ? this.line(t(left ? 'service.r.missed' : 'biz.r.missed'), String(r.missed), 'bad') : null,
+      left?.waited ? this.line(t('service.r.leftWaited'), String(left.waited), 'bad') : null,
+      left?.line ? this.line(t('service.r.leftLine'), String(left.line), 'bad') : null,
       r.wasted ? this.line(t('biz.r.wasted'), String(r.wasted), 'bad') : null,
       this.line(t('shop.r.revenue'), money(r.revenue), 'plus'),
       this.line(t('biz.r.cups'), `-${money(r.cupCost)}`, 'minus'),
@@ -267,7 +283,8 @@ export class BusinessView {
       h('span', { class: 'shop-event-icon', 'aria-hidden': 'true' }, [WEATHER_ICON[r.weather]]),
       h('div', {}, [h('strong', {}, [t('biz.happened', { weather: t(`weather.${r.weather}`) })])]),
     ]);
-    const tip = h('p', { class: 'shop-tip' }, [t(`biz.tip.${bizTip(r)}`, { best: r.bestProfit })]);
+    const slow = !!left && left.waited + left.line > Math.max(3, r.wanted * 0.2);
+    const tip = h('p', { class: 'shop-tip' }, [slow ? t('service.tip.slow') : t(`biz.tip.${bizTip(r)}`, { best: r.bestProfit })]);
     const till = h('div', { class: 'card-note' }, [t('biz.tillNow', { n: this.rec!.till })]);
     this.frame(t('biz.resultTitle'), [starRow(stars, t('shop.stars', { n: stars })), happened, table, tip, till], [
       this.button(t('biz.toBusiness'), () => this.drawHome()),

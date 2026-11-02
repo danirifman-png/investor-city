@@ -66,6 +66,16 @@ import { FriendView, gendered, type FriendAction } from '../ui/FriendView';
 import { BEST_GIFT, FRIENDS } from '../content/friends';
 import { TOWN_LINES } from '../content/townsfolk';
 import { TreasureMarks } from '../world/TreasureMarks';
+import { ServiceQueue } from '../world/ServiceQueue';
+import { JobView } from '../ui/JobView';
+import { JOB_BY_POI, SHIFT, type JobDef } from '../content/jobs';
+import { makeShift, paidToday, payslip, recordShift, type Payslip } from './Jobs';
+import { playServedShift, shiftDemand, type ShiftPlan, type ShopDay } from './PizzaShop';
+/** Where the player cooks in Marco's pizzeria and where the line starts (room coordinates). */
+const PIZZA_COUNTER = { cook: { x: 3.0, z: -2.4 }, queue: { x: 3.0, z: -0.6 } };
+const PIZZA_SECONDS = 60;
+import { ServiceView } from '../ui/ServiceView';
+import { planService, RECIPES, ServiceRun, type RecipeStep, type ServiceEvent } from './Service';
 import { ESCALATOR, ESCALATORS, escalatorHeight } from '../content/mall';
 import { TREASURE_FRIEND_LEVEL } from '../content/treasure';
 import { nextStep, piecesFound, take, treasureDone } from './Treasure';
@@ -77,9 +87,11 @@ import { HOME_MEAL, SLEEP_BED, SLEEP_FLOOR, TAP_WATER, type NeedId } from '../co
 import { grade as gradeTier, recordTier } from './BuildingMissions';
 import { BUILDING_MISSIONS, TIER_RULES, type MissionBuilding } from '../content/missions/buildings';
 import { accrue, dayIndex, portfolioValue } from './Money';
+import { addMoments, newMoments } from './Album';
 import { decisionSeed, decisionState, recordDecision, resolveDecision } from './Decisions';
 import { DECISION_BY_BUILDING } from '../content/decisions';
-import { CITY_EVENTS, cityEventFor, dayKey, recordBizDay, STAGE_RULES, takeHome, upgrade, type BizResult, type CityEventId } from './Business';
+import { bizDemand, playServedDay, type BizDay, type BizPlan } from './Business';
+import { CITY_EVENTS, cityEventFor, cityWeatherFor, dayKey, recordBizDay, STAGE_RULES, takeHome, upgrade, type BizResult, type CityEventId, type WeatherId } from './Business';
 
 export type GameEvents = {
   'zone:changed': ZoneId | null;
@@ -230,6 +242,10 @@ export class Game {
   readonly lifeView: LifeView;
   readonly sleepView = new SleepView();
   readonly friendView: FriendView;
+  readonly jobView: JobView;
+  readonly serviceView: ServiceView;
+  private serviceQueue = new ServiceQueue();
+  private service: { run: ServiceRun; price: number; till: number; clock: number; empty: boolean; finish(run: ServiceRun): void } | null = null;
   private treasureMarks: TreasureMarks;
   /** The day bills were last checked (bills come once per day played). */
   private billDay = -1;
@@ -350,6 +366,13 @@ export class Game {
       onSelectPoi: (id) => this.select(id),
       onTravel: (zone) => this.travelTo(zone),
       onVisitPoi: (id) => this.visitPoi(id),
+      jobAt: (key) => {
+        const job = JOB_BY_POI[key];
+        if (!job) return null;
+        const level = this.data ? levelOf(this.data.growth.xp).level : 1;
+        return { locked: level < job.minLevel ? job.minLevel : null };
+      },
+      onWork: (key) => this.startJob(key),
       onInteract: () => this.interact(),
       onSave: () => this.save(true),
       onEditCharacter: () => this.openCreator(true),
@@ -409,7 +432,7 @@ export class Game {
         if (!d) return null;
         const errands = NPC_IDS.filter((id) => d.social.errands[id] !== 'none').map((npc) => ({ npc, state: d.social.errands[npc] as 'active' | 'ready' | 'done' }));
         const line = this.missionLine();
-        return { growth: d.growth, errands, mission: line ? { line, done: d.missions.branch.status === 'done' } : null };
+        return { growth: d.growth, errands, mission: line ? { line, done: d.missions.branch.status === 'done' } : null, album: d.album, today: this.today() };
       },
       onGoTo: (id) => {
         this.hud.closeOverlays();
@@ -421,6 +444,7 @@ export class Game {
     this.hud.addOverlay(this.questLog.el, () => this.questLog.hide());
     this.shop = new PizzaShopView({
       onDayDone: (level, s) => this.onShopDay(level, s),
+      onServe: (day, plan) => this.startPizzaService(day, plan),
       onClose: () => this.hud.closeOverlays(),
     });
     this.hud.addOverlay(this.shop.el, () => this.shop.close());
@@ -429,10 +453,13 @@ export class Game {
       onUpgrade: () => this.onBizUpgrade(),
       onTakeHome: () => this.onBizTakeHome(),
       cityEvent: () => this.cityEvent(),
+      weather: () => this.cityWeather(),
+      onServe: (day, plan) => this.startService(day, plan),
       onClose: () => this.hud.closeOverlays(),
     });
     this.hud.addOverlay(this.biz.el, () => this.biz.close());
     this.money = new MoneyView({
+      cityEvent: () => this.cityEvent(),
       worth: () => {
         const d = this.data;
         const w = this.worthNow();
@@ -503,6 +530,18 @@ export class Game {
       },
     });
     this.hud.addOverlay(this.friendView.el, () => this.friendView.close());
+    this.jobView = new JobView({
+      onShiftDone: (job, right) => this.onShiftDone(job, right),
+      onClose: () => this.hud.closeOverlays(),
+    });
+    this.hud.addOverlay(this.jobView.el, () => this.jobView.close());
+    this.serviceView = new ServiceView({
+      step: (st) => this.serviceStep(st),
+      serve: () => this.serviceServe(),
+      end: () => this.endService(),
+    });
+    container.append(this.serviceView.el);
+    this.scene.add(this.serviceQueue.group);
     this.bag = new Bag({ view: () => this.data?.growth ?? null, onClose: () => this.hud.closeOverlays() });
     this.hud.addOverlay(this.bag.el, () => this.bag.hide());
     this.settings = new SettingsPanel({
@@ -559,6 +598,7 @@ export class Game {
     this.player.setLook(this.data.character);
     this.player.teleport(this.data.player.x, this.data.player.z, this.data.player.heading, this.data.player.y);
     this.setNight(this.data.settings.night);
+    this.atmosphere.setWeather(this.cityWeather(), true);
     this.enterCity(false);
   }
 
@@ -674,6 +714,17 @@ export class Game {
   }
 
   /** Writes the save. `announce` shows a confirmation toast. */
+  /** New first times go into the album, with a gentle note. */
+  private checkAlbum(): void {
+    const d = this.data;
+    if (!d) return;
+    const fresh = newMoments(d.album, d);
+    if (!fresh.length) return;
+    d.album = addMoments(d.album, fresh, this.today());
+    // after any toast of the moment itself
+    window.setTimeout(() => this.hud.toast(t('album.toast', { what: t(`album.${fresh[0]}.title`) }), 3200), 2400);
+  }
+
   save(announce: boolean): boolean {
     if (!this.data || this.mode === 'title') return false;
     const p = this.player;
@@ -686,6 +737,7 @@ export class Game {
     } else this.data.player = { x: p.position.x, y: p.position.y, z: p.position.z, heading: p.heading };
     this.data.progress.metresWalked = Math.round(this.data.progress.metresWalked + p.distance);
     p.distance = 0;
+    this.checkAlbum();
     const ok = this.saves.save(this.data);
     this.sinceSave = 0;
     if (announce) this.hud.toast(ok ? t('hud.saved') : t('hud.saveFailed'));
@@ -1111,6 +1163,178 @@ export class Game {
     if (friendLevel(friendOf(d.friends, id).points) >= TREASURE_FRIEND_LEVEL) window.setTimeout(() => this.friendPiece(id), 1400);
   }
 
+  /* ------------------------------- jobs -------------------------------- */
+
+  /** Starts a shift at the job in a building (the player must be there). */
+  private startJob(key: string): void {
+    const d = this.data;
+    const job = JOB_BY_POI[key];
+    const poi = this.city.pois.find((p) => p.key === key);
+    if (!d || !job || !poi) return;
+    const level = levelOf(d.growth.xp).level;
+    if (level < job.minLevel) return;
+    if (!this.interiors.current && this.poiDistance(poi) > 14) {
+      this.hud.toast(t('job.goFirst'), 2600);
+      return this.visitPoi(poi.id);
+    }
+    this.select(null);
+    this.hud.closeOverlays();
+    this.player.animator.play('wave');
+    const practice = paidToday(d.jobs, job.id, this.today());
+    this.jobView.show(job, makeShift(job, (Date.now() ^ 0x10b5) >>> 0, level >= 5), practice);
+    this.cam.enabled = false;
+  }
+
+  private onShiftDone(job: JobDef, right: number): Payslip {
+    const d = this.data!;
+    const day = this.today();
+    const slip = payslip(job, right, levelOf(d.growth.xp).level, paidToday(d.jobs, job.id, day));
+    d.jobs = recordShift(d.jobs, job.id, day, right);
+    d.needs = addNeeds(d.needs, { energy: -SHIFT.energy });
+    this.showNeeds();
+    this.reward({ coins: slip.net, xp: 10 + right * 5 });
+    this.sound.play(slip.net ? 'chest' : 'success');
+    this.player.animator.play('cheer');
+    this.save(false);
+    return slip;
+  }
+
+  /* --------------------------- working the counter --------------------------- */
+
+  /** Opens the stand for a day the player works themselves. */
+  private startService(day: BizDay, plan: BizPlan): void {
+    this.biz.close();
+    this.hud.closeOverlays();
+    const c = this.bizSite.counter;
+    const y = this.city.collision.groundHeight(c.x - 1, c.z, 1);
+    this.player.setRiding(false);
+    this.hud.setRiding(false);
+    this.player.teleport(c.x, c.z, -Math.PI / 2);
+    this.serviceQueue.setCounter(c.x, c.z, y, -1, 0);
+    this.serviceCamera(c.x - 2.2, y, c.z, Math.PI / 2 + 0.55);
+    this.bizSite.marker.sprite.visible = false;
+    // the day's real weather shows over the stand while it is open
+    this.atmosphere.setWeather(day.weather);
+    const demand = bizDemand(day.stage, day.weather, day.city, plan.price);
+    const run = new ServiceRun(planService(demand, (Date.now() ^ 0x5eed) >>> 0), plan.cups, RECIPES.lemonade);
+    this.service = {
+      run,
+      price: plan.price,
+      till: 0,
+      clock: 0,
+      empty: false,
+      finish: (done) => {
+        this.biz.showResult(playServedDay(day, plan, done.sold), { waited: done.leftWaiting, line: done.leftLine });
+      },
+    };
+    this.serviceView.show(run, plan.price);
+    document.body.classList.add('serving');
+    this.player.animator.play('wave');
+  }
+
+  /** A shift in Marco's kitchen: the player bakes and serves at the counter. */
+  private startPizzaService(day: ShopDay, plan: ShiftPlan): void {
+    if (this.interiors.current !== 'pizzeria') return;
+    this.shop.el.hidden = true;
+    this.hud.closeOverlays();
+    const me = this.interiors.toWorld('pizzeria', PIZZA_COUNTER.cook.x, PIZZA_COUNTER.cook.z);
+    const q = this.interiors.toWorld('pizzeria', PIZZA_COUNTER.queue.x, PIZZA_COUNTER.queue.z);
+    this.player.teleport(me.x, me.z, 0);
+    this.serviceQueue.setCounter(q.x, q.z, 0.05, 0, 1);
+    this.serviceCamera((me.x + q.x) / 2, 0.05, q.z + 1.2, Math.PI + 0.4);
+    const run = new ServiceRun(planService(shiftDemand(day, plan.price), (Date.now() ^ 0x1771) >>> 0, PIZZA_SECONDS), plan.dough, RECIPES.pizza, PIZZA_SECONDS);
+    this.service = {
+      run,
+      price: plan.price,
+      till: 0,
+      clock: 0,
+      empty: false,
+      finish: (done) => {
+        const r = playServedShift(day, plan, done.sold);
+        if (r) this.shop.showShift(r);
+      },
+    };
+    this.serviceView.show(run, plan.price);
+    document.body.classList.add('serving');
+  }
+
+  /** Frames the counter and the line above the panel (which covers the lower half on a phone). */
+  private serviceCamera(x: number, y: number, z: number, yaw: number): void {
+    const portrait = window.innerHeight > window.innerWidth;
+    this.serviceFocus.set(x, y, z);
+    this.cam.setFollow(this.serviceFocus, portrait ? -1.6 : 0.2);
+    this.cam.setState({ yaw, pitch: 0.5, distance: portrait ? 10 : 8.5 }, false);
+  }
+
+  private serviceFocus = new THREE.Vector3();
+
+  private updateService(dt: number): void {
+    const sv = this.service;
+    if (!sv) return;
+    const run = sv.run;
+    for (const e of run.update(dt)) this.onServiceEvent(e);
+    this.serviceQueue.arrange(run.line.map((w) => w.order.id));
+    if (run.stock <= 0 && !sv.empty) {
+      sv.empty = true;
+      this.serviceView.say(t('service.outOfStock'));
+    }
+    if ((sv.clock -= dt) <= 0) {
+      sv.clock = 0.1;
+      this.serviceView.render(run, sv.till);
+    }
+    if (run.over) this.endService();
+  }
+
+  private onServiceEvent(e: ServiceEvent): void {
+    if (e.kind === 'arrive') return this.serviceQueue.arrive(e.order.id, e.order.look);
+    if (e.kind === 'served') return this.serviceQueue.leave(e.order.id, true);
+    this.serviceQueue.leave(e.order.id, false);
+    this.serviceView.say(t(e.why === 'line' ? 'service.leftLine' : e.why === 'empty' ? 'service.leftEmpty' : 'service.leftWaited'));
+  }
+
+  private serviceStep(st: RecipeStep): boolean {
+    const sv = this.service;
+    if (!sv) return false;
+    const ok = sv.run.step(st);
+    if (ok) {
+      this.sound.play('click');
+      this.player.animator.play('nod');
+    }
+    this.serviceView.render(sv.run, sv.till);
+    return ok;
+  }
+
+  private serviceServe(): void {
+    const sv = this.service;
+    if (!sv) return;
+    const e = sv.run.serve();
+    if (!e) return;
+    this.onServiceEvent(e);
+    if (e.kind === 'served') {
+      const pay = e.cups * sv.price;
+      sv.till += pay;
+      this.sound.play('coin');
+      this.player.animator.play('happy');
+      this.serviceView.say(t('service.paid', { n: pay }));
+    }
+    this.serviceView.render(sv.run, sv.till);
+  }
+
+  /** Closes the stand: everyone still waiting goes home, and the day is counted. */
+  private endService(): void {
+    const sv = this.service;
+    if (!sv) return;
+    for (const e of sv.run.close()) this.onServiceEvent(e);
+    this.service = null;
+    this.serviceView.hide();
+    this.bizSite.marker.sprite.visible = true;
+    this.atmosphere.setWeather(this.cityWeather());
+    this.cam.setFollow(this.player.position, this.player.height * 1.32);
+    document.body.classList.remove('serving');
+    sv.finish(sv.run);
+    this.cam.enabled = false;
+  }
+
   /** The mall's escalators carry whoever stands on them. */
   private rideEscalator(dt: number): void {
     const room = this.interiors.toWorld('mall', 0, 0);
@@ -1423,7 +1647,7 @@ export class Game {
 
     const playing = this.mode === 'playing';
     if (playing) {
-      const blocked = this.hud.overlayOpen || this.dialog.open || this.fading;
+      const blocked = this.hud.overlayOpen || this.dialog.open || this.fading || !!this.service;
       this.player.frozen = blocked;
       this.player.update(dt, this.cam.state.yaw);
       this.gear.update(dt);
@@ -1463,6 +1687,8 @@ export class Game {
       if (!blocked && this.input.wasPressed('KeyF')) this.hud.setRiding(this.toggleScooter());
       if (!blocked) this.walkIn(dt);
       if (this.interiors.current === 'mall') this.rideEscalator(dt);
+      this.updateService(dt);
+      this.serviceQueue.update(dt);
       if (this.conv || this.sleepView.open) this.hud.setPrompt(null);
       else if (this.nearNpc) this.hud.setPrompt({ id: `npc:${this.nearNpc.id}`, text: t('hud.talk', { name: t(`npc.${this.nearNpc.id}.short`) }) });
       else if (this.nearThing) this.hud.setPrompt(this.thingPrompt(this.nearThing));
@@ -1500,6 +1726,7 @@ export class Game {
     this.cam.update(dt);
     const focus = playing ? this.player.position : this.cam.target;
     this.atmosphere.follow(focus, playing ? 60 : this.cam.state.distance);
+    this.atmosphere.setIndoors(!!this.interiors.current);
     if (this.atmosphere.update(dt)) {
       this.city.setNight(this.atmosphere.nightAmount);
       this.ambient.setNight(this.atmosphere.nightAmount);
@@ -1773,6 +2000,11 @@ export class Game {
   }
 
   /** Today's city event (by the calendar, the same for every player). */
+  /** Today's weather over the city. */
+  private cityWeather(): WeatherId {
+    return cityWeatherFor(dayKey(new Date()));
+  }
+
   private cityEvent(): CityEventId {
     return cityEventFor(dayKey(new Date()));
   }
