@@ -435,6 +435,23 @@ export class PlayerController {
     if (this.hero) this.hero.scene.position.y = y;
   }
 
+  private lying = false;
+
+  /**
+   * Lies down on the back to sleep (head toward -z of the player, feet at its
+   * origin); `top` is the mattress height. Null gets up again.
+   */
+  lieDown(top: number | null): void {
+    this.lying = top !== null;
+    for (const body of [this.rig.root, this.hero?.scene]) if (body) body.rotation.x = this.lying ? -Math.PI / 2 : 0;
+    // the back sits about 0.14 m behind the body's centre line
+    this.setLift(this.lying ? top! + 0.14 : 0);
+  }
+
+  get isLying(): boolean {
+    return this.lying;
+  }
+
   /** The head being shown now, for hats and glasses. */
   headFrame(): HeadFrame | null {
     return this.hero && this.look.model !== 'custom' ? heroHead(this.hero.scene) : rigHead(this.rig.head);

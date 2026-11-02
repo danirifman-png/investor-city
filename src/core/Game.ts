@@ -61,6 +61,8 @@ import { BusinessView, CITY_ICON } from '../ui/BusinessView';
 import { MoneyView } from '../ui/MoneyView';
 import { MissionView } from '../ui/MissionView';
 import { LifeView, type LifeTab } from '../ui/LifeView';
+import { SleepView } from '../ui/SleepView';
+import { FURNITURE } from '../content/home';
 import { billsFor, noteWorth, payBills, worth, type Worth } from './Life';
 import { add as addNeeds, consume, drain, lowNeeds, needSpeed, sleep as sleepNeeds } from './Needs';
 import { HOME_MEAL, SLEEP_BED, SLEEP_FLOOR, TAP_WATER, type NeedId } from '../content/needs';
@@ -216,6 +218,7 @@ export class Game {
   private fw = new Fireworks();
   readonly missionsView: MissionView;
   readonly lifeView: LifeView;
+  readonly sleepView = new SleepView();
   /** The day bills were last checked (bills come once per day played). */
   private billDay = -1;
   private billClock = 0;
@@ -472,6 +475,7 @@ export class Game {
       onClose: () => this.hud.closeOverlays(),
     });
     this.hud.addOverlay(this.lifeView.el, () => this.lifeView.close());
+    this.hud.addOverlay(this.sleepView.el, () => this.sleepView.finish());
     this.bag = new Bag({ view: () => this.data?.growth ?? null, onClose: () => this.hud.closeOverlays() });
     this.hud.addOverlay(this.bag.el, () => this.bag.hide());
     this.settings = new SettingsPanel({
@@ -809,17 +813,34 @@ export class Game {
     this.showNeeds();
   }
 
-  /** Sleep in the home: a short fade to night and back, energy refilled (fully in a bed). */
+  /**
+   * Sleep in the home: the hero lies down on the bed (or the mattress), the
+   * night passes over a few seconds (or is skipped), and morning brings full
+   * energy (part of it on the floor mattress).
+   */
   private sleepAtHome(): void {
     const d = this.data;
-    if (!d) return;
+    if (!d || this.sleepView.open || this.interiors.current !== 'home') return;
     const bed = d.shop.owned.includes('bed');
-    this.player.animator.play('happy');
-    this.fade(() => {
-      d.needs = sleepNeeds(d.needs, bed ? SLEEP_BED : SLEEP_FLOOR);
+    const fit = FURNITURE.bed;
+    const from = d.needs.energy;
+    const to = Math.max(from, bed ? SLEEP_BED : SLEEP_FLOOR);
+    this.hud.closeOverlays();
+    // feet at the foot of the bed, head on the pillow (toward the wall)
+    const foot = this.interiors.toWorld('home', fit.x, fit.z + 0.78);
+    this.player.teleport(foot.x, foot.z, 0);
+    this.player.lieDown(bed ? 0.55 : 0.22);
+    this.cam.setState({ yaw: Math.PI * 0.62, pitch: 0.75, distance: 4.2 }, false);
+    this.sleepView.show(from, to, () => {
+      d.needs = sleepNeeds(d.needs, to);
+      this.player.lieDown(null);
+      const side = this.interiors.toWorld('home', fit.x + 1.1, fit.z + 0.6);
+      this.player.teleport(side.x, side.z, Math.PI / 2);
+      this.player.animator.play('happy');
       this.showNeeds();
       this.save(false);
-      window.setTimeout(() => this.hud.toast(t(bed ? 'home.sleptBed' : 'home.sleptFloor'), 4200), 500);
+      this.hud.closeOverlays();
+      this.hud.toast(t(bed ? 'home.sleptBed' : 'home.sleptFloor'), 4200);
     });
   }
 
@@ -1224,7 +1245,7 @@ export class Game {
       else if (!blocked && this.input.wasPressed('Space')) this.player.jump();
       if (!blocked && this.input.wasPressed('KeyF')) this.hud.setRiding(this.toggleScooter());
       if (!blocked) this.walkIn(dt);
-      if (this.conv) this.hud.setPrompt(null);
+      if (this.conv || this.sleepView.open) this.hud.setPrompt(null);
       else if (this.nearNpc) this.hud.setPrompt({ id: `npc:${this.nearNpc.id}`, text: t('hud.talk', { name: t(`npc.${this.nearNpc.id}.short`) }) });
       else if (this.nearThing) this.hud.setPrompt(this.thingPrompt(this.nearThing));
       else if (this.nearPoi) this.hud.setPrompt({ id: this.nearPoi.id, text: t('hud.interact', { name: t(`poi.${this.nearPoi.key}.name`) }) });

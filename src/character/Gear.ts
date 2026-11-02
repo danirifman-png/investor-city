@@ -126,7 +126,7 @@ export class Gear {
   private equipped: Partial<Record<Slot, string>> = {};
   private pet: { id: string; obj: THREE.Object3D; hover: boolean; t: number } | null = null;
   private balloon: { obj: THREE.Object3D; line: THREE.Line; t: number } | null = null;
-  private treat: { obj: THREE.Object3D; t: number; size: number; bites: number } | null = null;
+  private treat: { obj: THREE.Object3D; t: number; size: number; bites: number; drink: boolean } | null = null;
   /** Bumped on every apply so that late model loads for old choices are dropped. */
   private gen = 0;
 
@@ -238,7 +238,8 @@ export class Gear {
       holder.add(fill);
     } else return;
     this.group.add(holder);
-    this.treat = { obj: holder, t: 0, size: 1.6, bites: 0 };
+    holder.rotation.order = 'YXZ';
+    this.treat = { obj: holder, t: 0, size: 1.6, bites: 0, drink: id === 'water' || id === 'milkshake' };
   }
 
   /** Call after the player has moved and been posed. */
@@ -300,6 +301,8 @@ export class Gear {
       p.handNearMouth(v, hold);
       p.rightHand(tr.obj.position);
       tr.obj.rotation.y = yaw;
+      // a drink tips toward the mouth for each sip
+      tr.obj.rotation.x = tr.drink ? -lift * 1.15 : 0;
       // a piece goes with every bite; chew (the mouth moves) after each one
       const left = treatLeft(t);
       const bites = Math.round((1 - left) * BITES.length);
