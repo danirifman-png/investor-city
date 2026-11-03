@@ -4,8 +4,8 @@ import { stylizeCanopy, type CanopyStyle } from './treeCanopy';
 
 /** Leaves become soft clumps (palms keep their fronds). */
 const CANOPY: Partial<Record<TreeKind, CanopyStyle>> = {
-  olive: { cell: 0.25, color: '#8fa864' },
-  plane: { cell: 0.24, color: '#6aa84a' },
+  olive: { cell: 0.27, color: '#8fa864' },
+  plane: { cell: 0.3, color: '#6aa84a' },
   cypress: { cell: 0.2, color: '#47804a' },
 };
 

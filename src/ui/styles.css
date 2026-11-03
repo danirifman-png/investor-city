@@ -2694,8 +2694,16 @@ kbd {
   accent-color: var(--accent);
 }
 
+.set-quality {
+  margin: 10px 0;
+}
 .set-quality small {
   color: var(--muted);
+  font-size: 0.82rem;
+}
+.set-quality-btns {
+  margin: 6px 0 4px;
+  gap: 6px;
 }
 
 .set-reset,

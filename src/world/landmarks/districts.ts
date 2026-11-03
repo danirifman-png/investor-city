@@ -345,9 +345,49 @@ const bank: LotBuilder = (f, ctx) => {
   // gold coin emblem
   f.cyl(1.4, 1.4, 0.3, '#e7b83c', { y: 14.9, z: 7.05, rotX: Math.PI / 2 }, 20);
   for (const x of [-10.5, 10.5]) streetLamp(f, x, 9, Math.PI);
+  bankDressing(f);
   sidewalkTrees(f, ctx.rng);
   return 18;
 };
+
+/**
+ * What makes the bank's front feel cared for: stone planters with clipped
+ * shrubs beside the steps, navy banners with a gold coin on the facade, a
+ * brass plaque by the door and bollards at the kerb.
+ */
+function bankDressing(f: Frame): void {
+  f.ctx.batch.noCollision(() => {
+    for (const s of [-1, 1]) {
+      // planter: stone box, darker rim, two round shrubs and a cone topiary
+      const x = s * 8.9;
+      const y = 1.2; // on the top step, between the outer column and the edge
+      f.box(1.8, 0.7, 1.1, '#d9cdb2', { x, z: 6.6, y });
+      f.box(1.95, 0.12, 1.25, '#c4b494', { x, z: 6.6, y: y + 0.7 });
+      f.sphere(0.42, '#4f8f42', { x: x - 0.42, z: 6.6, y: y + 1.12 }, 12);
+      f.sphere(0.36, '#5a9c4a', { x: x + 0.45, z: 6.6, y: y + 1.06 }, 12);
+      f.cyl(0.02, 0.38, 1.3, '#3f7a3a', { x, z: 6.7, y: y + 0.8 }, 12);
+      for (let k = 0; k < 5; k++) f.sphere(0.08, ['#ff6f91', '#ffd23f', '#ffffff'][k % 3], { x: x - 0.72 + k * 0.36, z: 7.12, y: y + 0.8 }, 6);
+      // banner hanging from a gilded rod between the outer columns
+      const bx = s * 6;
+      f.box(1.5, 0.08, 0.08, '#e7b83c', { x: bx, z: 4.1, y: 9.6 });
+      f.box(1.25, 3.6, 0.06, '#2d4a8a', { x: bx, z: 4.08, y: 6.0 });
+      for (const t2 of [-1, 0, 1]) f.box(0.42, 0.42, 0.06, '#2d4a8a', { x: bx + t2 * 0.42, z: 4.08, y: 5.7, rotZ: Math.PI / 4 });
+      f.cyl(0.38, 0.38, 0.04, '#e7b83c', { x: bx, z: 4.13, y: 7.7, rotX: Math.PI / 2 }, 20);
+      f.cyl(0.26, 0.26, 0.05, '#f6d57a', { x: bx, z: 4.15, y: 7.71, rotX: Math.PI / 2 }, 20);
+      f.box(1.25, 0.1, 0.07, '#e7b83c', { x: bx, z: 4.1, y: 8.9 });
+      // bollards along the kerb
+      for (const k of [0, 1, 2]) {
+        const px = s * (3 + k * 2.2);
+        f.cyl(0.14, 0.16, 0.8, '#3a3f4a', { x: px, z: 11.3 }, 10);
+        f.sphere(0.15, '#3a3f4a', { x: px, z: 11.3, y: 0.82 }, 8);
+        f.cyl(0.165, 0.165, 0.08, '#e7b83c', { x: px, z: 11.3, y: 0.6 }, 10);
+      }
+    }
+    // brass plaque beside the door
+    f.box(0.9, 0.6, 0.06, '#c9a03a', { x: 2.3, z: 3.56, y: 2.6 });
+    f.box(0.75, 0.45, 0.07, '#e2be5c', { x: 2.3, z: 3.57, y: 2.675 });
+  });
+}
 
 const officeTower: LotBuilder = (f, ctx) => {
   const rng = ctx.rng;

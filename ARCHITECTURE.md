@@ -426,3 +426,20 @@ sky shows that day's actual weather.
 the saved state whenever the game saves and keeps the day each happened. It is
 shown at the end of the quest log. Old saves get their existing moments
 quietly, undated.
+
+## Graphics quality and the stylized look
+
+- `detectQuality()` (core/Game.ts) picks one of four presets: low, medium, high and ultra. The player can choose a preset in Settings; the choice is saved under `investor-city.quality`, and `?quality=` overrides it. With no choice, phones and tablets get medium and computers get high, the same as before the levels existed.
+- The presets set the pixel ratio, the shadow map size, MSAA samples, bloom (high and up) and ambient occlusion (ultra only; `SolidAOPass` in world/Style.ts skips see-through objects).
+- Lighting (world/Atmosphere.ts, vivid mode): a warm sun at about 40 degrees carries the light, and a weaker sky fill lights the shade. The colour grade is in `GradeShader`.
+- Shop fronts (world/shopWindows.ts and `shopRow` in landmarks/decor.ts): one painted atlas holds the inside of seven kinds of shop, and each window shows its own cell.
+- Trees (world/treeCanopy.ts): the scanned leaf triangles of olive and plane trees, told apart from bark by texture colour, are replaced with soft shaded clumps.
+
+Measured at the plaza in a headless browser (1400×700, pixel ratio 1), per frame:
+
+| Level | Draw calls | Triangles | Textures | Shader programs |
+|---|---|---|---|---|
+| low | 179 | 3.74M | 190 | 50 |
+| medium | 180 | 3.74M | 190 | 50 |
+| high | 190 | 3.74M | 202 | 58 |
+| ultra | 363 | 7.48M | 208 | 64 |

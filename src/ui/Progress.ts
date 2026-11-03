@@ -297,7 +297,8 @@ export class SettingsPanel {
   constructor(
     private o: {
       view(): Settings | null;
-      quality: 'high' | 'low';
+      quality: 'low' | 'medium' | 'high' | 'ultra';
+      onQuality(q: 'low' | 'medium' | 'high' | 'ultra' | 'auto'): void;
       onChange(s: Partial<Settings>): void;
       onReset(): void;
       onClose(): void;
@@ -314,6 +315,22 @@ export class SettingsPanel {
 
   hide(): void {
     this.el.hidden = true;
+  }
+
+  /** Low / medium / high / ultra; picking one reloads the game (it is saved first). */
+  private qualityRow(): HTMLElement {
+    const levels = ['low', 'medium', 'high', 'ultra'] as const;
+    const btns = levels.map((q) => {
+      const on = q === this.o.quality;
+      const b = h('button', { class: `gfx-btn${on ? ' on' : ''}`, type: 'button', 'data-quality': q, 'aria-pressed': String(on) }, [t(`settings.q.${q}`)]);
+      if (!on) b.addEventListener('click', () => this.o.onQuality(q));
+      return b;
+    });
+    return h('div', { class: 'set-quality' }, [
+      h('span', {}, [t('settings.qualityTitle')]),
+      h('div', { class: 'gfx-row set-quality-btns' }, btns),
+      h('small', {}, [t('settings.qualityHint')]),
+    ]);
   }
 
   private render(): void {
@@ -340,7 +357,7 @@ export class SettingsPanel {
       toggle('guide'),
       toggle('calm'),
       h('label', { class: 'set-row set-range' }, [h('span', {}, [t('settings.camSpeed')]), speed]),
-      h('p', { class: 'set-quality' }, [t('settings.quality', { q: t(this.o.quality === 'high' ? 'settings.qualityHigh' : 'settings.qualityLow') }), h('br'), h('small', {}, [t('settings.qualityHint')])]),
+      this.qualityRow(),
       reset,
     );
   }

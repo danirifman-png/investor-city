@@ -104,21 +104,70 @@ export type GameEvents = {
   'errand:changed': { npc: NpcId; state: string };
 };
 
+export type QualityLevel = 'low' | 'medium' | 'high' | 'ultra';
+export const QUALITY_LEVELS: QualityLevel[] = ['low', 'medium', 'high', 'ultra'];
+
 export interface QualitySettings {
-  level: 'high' | 'low';
+  level: QualityLevel;
   pixelRatio: number;
   shadowMap: number;
+  /** Multisampling of the post-processing target (0 = off). */
+  samples: number;
+  bloom: boolean;
+  /** Ambient occlusion (an extra pass over the scene). */
+  ao: boolean;
+}
+
+const QUALITY_KEY = 'investor-city.quality';
+
+/**
+ * Graphics presets. Medium is what phones and tablets got before the levels
+ * existed and high is what computers got, so the automatic choice looks the
+ * same as before; low is for weak devices and ultra adds ambient occlusion.
+ */
+export function qualityPreset(level: QualityLevel): QualitySettings {
+  const dpr = typeof devicePixelRatio === 'number' ? devicePixelRatio : 1;
+  switch (level) {
+    case 'low':
+      return { level, pixelRatio: Math.min(dpr, 1), shadowMap: 1024, samples: 2, bloom: false, ao: false };
+    case 'medium':
+      return { level, pixelRatio: Math.min(dpr, 1.5), shadowMap: 1024, samples: 4, bloom: false, ao: false };
+    case 'high':
+      return { level, pixelRatio: Math.min(dpr, 2), shadowMap: 2048, samples: 4, bloom: true, ao: false };
+    case 'ultra':
+      return { level, pixelRatio: Math.min(dpr, 2), shadowMap: 4096, samples: 4, bloom: true, ao: true };
+  }
+}
+
+const isLevel = (v: string | null): v is QualityLevel => !!v && (QUALITY_LEVELS as string[]).includes(v);
+
+/** The level the device gets when the player has not picked one. */
+export function autoQuality(): QualityLevel {
+  const coarse = matchMedia('(pointer: coarse)').matches;
+  const small = Math.min(screen.width, screen.height) < 820;
+  return coarse || small ? 'medium' : 'high';
 }
 
 export function detectQuality(): QualitySettings {
-  const params = new URLSearchParams(location.search);
-  const forced = params.get('quality');
-  const coarse = matchMedia('(pointer: coarse)').matches;
-  const small = Math.min(screen.width, screen.height) < 820;
-  const low = forced ? forced === 'low' : coarse || small;
-  return low
-    ? { level: 'low', pixelRatio: Math.min(devicePixelRatio, 1.5), shadowMap: 1024 }
-    : { level: 'high', pixelRatio: Math.min(devicePixelRatio, 2), shadowMap: 2048 };
+  const forced = new URLSearchParams(location.search).get('quality');
+  if (isLevel(forced)) return qualityPreset(forced);
+  let saved: string | null = null;
+  try {
+    saved = localStorage.getItem(QUALITY_KEY);
+  } catch {
+    /* private mode */
+  }
+  return qualityPreset(isLevel(saved) ? saved : autoQuality());
+}
+
+/** Remembers the player's choice ('auto' forgets it). */
+export function saveQuality(level: QualityLevel | 'auto'): void {
+  try {
+    if (level === 'auto') localStorage.removeItem(QUALITY_KEY);
+    else localStorage.setItem(QUALITY_KEY, level);
+  } catch {
+    /* the choice lasts for this visit only */
+  }
 }
 
 type Mode = 'title' | 'creator' | 'playing';
@@ -280,13 +329,13 @@ export class Game {
     if (vivid) {
       addSurfaceDetail(this.city.materials.byKey.paint as THREE.MeshStandardMaterial, 0.6, true);
       addSurfaceDetail(this.city.materials.facade, 0.4);
-      this.postfx = new PostFX(this.renderer, this.scene, this.cam.camera, quality.level === 'high');
+      this.postfx = new PostFX(this.renderer, this.scene, this.cam.camera, quality);
     }
     this.scene.add(this.city.root);
     void this.city.trees.load();
     void this.city.parked.load();
     this.cam.collision = this.city.collision;
-    this.ambient = new Ambient(this.city.walkLoops, quality.level);
+    this.ambient = new Ambient(this.city.walkLoops, quality.level === 'high' || quality.level === 'ultra' ? 'high' : 'low');
     this.scene.add(this.ambient.group);
 
     this.npcs = new Npcs(this.city.pois, this.city.collision);
@@ -546,7 +595,8 @@ export class Game {
     this.hud.addOverlay(this.bag.el, () => this.bag.hide());
     this.settings = new SettingsPanel({
       view: () => this.data?.settings ?? null,
-      quality: quality.level === 'high' ? 'high' : 'low',
+      quality: quality.level,
+      onQuality: (q) => this.setQuality(q),
       onChange: (c) => this.changeSettings(c),
       onReset: () => {
         this.saves.clear();
@@ -1092,6 +1142,13 @@ export class Game {
     this.dialog.show(line, { name: this.player.look.nickname }, repLevel(this.data.social.npcs[actor.id].rep));
     actor.animator.play(line.mood);
     actor.speak(t(line.textKey).length / 55);
+  }
+
+  /** The quality level is picked at start-up too: save the game, remember the choice, reload. */
+  private setQuality(q: QualityLevel | 'auto'): void {
+    saveQuality(q);
+    if (this.mode === 'playing') this.save(false);
+    location.reload();
   }
 
   /** The graphics style is picked at start-up, so a change saves and reloads. */

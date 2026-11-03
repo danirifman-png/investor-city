@@ -5,6 +5,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 
 /**
  * The "vivid" art direction: a bright, saturated, stylised cartoon look
@@ -145,23 +146,57 @@ const GradeShader = {
     }`,
 };
 
-/** Post-processing chain for the vivid look: render -> bloom (high quality only) -> tone map -> grade. */
+/**
+ * Ambient occlusion that only sees solid surfaces: glows, sprites, water and
+ * other see-through things would otherwise leave dark boxes behind them.
+ */
+class SolidAOPass extends GTAOPass {
+  private hidden: THREE.Object3D[] = [];
+  overrideVisibility(): void {
+    super.overrideVisibility();
+    this.hidden.length = 0;
+    this.scene.traverse((o) => {
+      if (!o.visible) return;
+      const m = (o as THREE.Mesh).material as THREE.Material | THREE.Material[] | undefined;
+      const first = Array.isArray(m) ? m[0] : m;
+      if ((o as THREE.Sprite).isSprite || (first && (first.transparent || !first.depthWrite))) {
+        o.visible = false;
+        this.hidden.push(o);
+      }
+    });
+  }
+  restoreVisibility(): void {
+    for (const o of this.hidden) o.visible = true;
+    this.hidden.length = 0;
+    super.restoreVisibility();
+  }
+}
+
+/** Post-processing chain for the vivid look: render -> ambient occlusion (ultra) -> bloom (high and up) -> tone map -> grade. */
 export class PostFX {
   private composer: EffectComposer;
   private bloom: UnrealBloomPass | null = null;
+  private ao: SolidAOPass | null = null;
 
   constructor(
     renderer: THREE.WebGLRenderer,
     scene: THREE.Scene,
     camera: THREE.Camera,
-    bloom: boolean,
+    o: { bloom: boolean; samples: number; ao: boolean },
   ) {
     const size = renderer.getDrawingBufferSize(new THREE.Vector2());
     // multisampled HDR target keeps edges smooth (the renderer's own antialias does not apply to passes)
-    const target = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: 4 });
+    const target = new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType, samples: o.samples });
     this.composer = new EffectComposer(renderer, target);
     this.composer.addPass(new RenderPass(scene, camera));
-    if (bloom) {
+    if (o.ao) {
+      // soft contact darkening where things meet: under benches, in corners, at the foot of walls
+      this.ao = new SolidAOPass(scene, camera, size.x, size.y);
+      this.ao.updateGtaoMaterial({ radius: 1.0, distanceExponent: 1.4, thickness: 1.5, scale: 1.3, samples: 12, distanceFallOff: 1, screenSpaceRadius: false });
+      this.ao.blendIntensity = 0.9;
+      this.composer.addPass(this.ao);
+    }
+    if (o.bloom) {
       this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x / 2, size.y / 2), 0.32, 0.55, 0.92);
       this.composer.addPass(this.bloom);
     }
