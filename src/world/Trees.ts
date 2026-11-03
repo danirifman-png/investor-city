@@ -1,5 +1,13 @@
 import * as THREE from 'three';
 import { loadGltf } from '../character/AvatarNpc';
+import { stylizeCanopy, type CanopyStyle } from './treeCanopy';
+
+/** Leaves become soft clumps (palms keep their fronds). */
+const CANOPY: Partial<Record<TreeKind, CanopyStyle>> = {
+  olive: { cell: 0.25, color: '#8fa864' },
+  plane: { cell: 0.24, color: '#6aa84a' },
+  cypress: { cell: 0.2, color: '#47804a' },
+};
 
 /**
  * Realistic trees for the city. While the city is built, every tree spot is
@@ -70,6 +78,14 @@ export class TreeLayer {
   }
 
   private instance(kind: TreeKind, scene: THREE.Object3D): void {
+    const style = CANOPY[kind];
+    if (style) {
+      try {
+        stylizeCanopy(scene, style);
+      } catch {
+        // keep the scanned leaves
+      }
+    }
     // foliage is never metal: a metalness texture turns leaves in shade black
     scene.traverse((o) => {
       const mesh = o as THREE.Mesh;
