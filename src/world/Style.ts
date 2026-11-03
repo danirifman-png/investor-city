@@ -118,11 +118,11 @@ export class Clouds {
 const GradeShader = {
   uniforms: {
     tDiffuse: { value: null },
-    saturation: { value: 1.02 },
-    contrast: { value: 1.05 },
-    warm: { value: new THREE.Vector3(1.0, 0.975, 0.94) },
-    cool: { value: new THREE.Vector3(0.93, 0.96, 1.0) },
-    vignette: { value: 0.16 },
+    saturation: { value: 1.06 },
+    contrast: { value: 1.06 },
+    warm: { value: new THREE.Vector3(1.02, 0.985, 0.93) },
+    cool: { value: new THREE.Vector3(0.9, 0.95, 1.03) },
+    vignette: { value: 0.14 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;

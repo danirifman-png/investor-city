@@ -39,13 +39,15 @@ const VIVID_DAY: Palette = {
   skyTop: new THREE.Color('#3d86d6'),
   skyBottom: new THREE.Color('#dbe8f2'),
   fog: new THREE.Color('#d3dfe8'),
-  sun: new THREE.Color('#fff0dc'),
-  sunIntensity: 3.1,
-  hemiSky: new THREE.Color('#d4e4f4'),
-  hemiGround: new THREE.Color('#9a8a70'),
-  hemiIntensity: 0.7,
-  env: 0.85,
-  exposure: 1.0,
+  // a warm late-morning sun carries the light; the sky only fills the shade (cool, softer),
+  // so every shape has a lit side and a shaded side
+  sun: new THREE.Color('#ffe6c2'),
+  sunIntensity: 3.5,
+  hemiSky: new THREE.Color('#c4daf2'),
+  hemiGround: new THREE.Color('#a48a66'),
+  hemiIntensity: 0.46,
+  env: 0.62,
+  exposure: 1.06,
 };
 
 const NIGHT: Palette = {
@@ -353,6 +355,8 @@ export class Atmosphere {
 
     this.stars.visible = n > 0.01;
     // the moon sits on the other side of the sky
-    this.sunOffset.set(THREE.MathUtils.lerp(70, -60, n), THREE.MathUtils.lerp(110, 120, n), THREE.MathUtils.lerp(55, 40, n));
+    // a lower sun (about 40 degrees) in vivid mode gives longer, more readable shadows
+    const sy = this.vivid ? 82 : 110;
+    this.sunOffset.set(THREE.MathUtils.lerp(76, -60, n), THREE.MathUtils.lerp(sy, 120, n), THREE.MathUtils.lerp(54, 40, n));
   }
 }
