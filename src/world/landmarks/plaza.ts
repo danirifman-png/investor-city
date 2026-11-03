@@ -464,8 +464,8 @@ export function buildOpeningPlaza(lot: Lot, ctx: BuildContext, newsTower: (f: Fr
   bin(f, -6.5, 12);
   bin(f, 6.5, 12);
   // pastel shop rows on both sides
-  shopRow(f.sub(-30.6, 6, Math.PI / 2), rng, [-12, -4, 4, 12]);
-  shopRow(f.sub(30.6, 4, -Math.PI / 2), rng, [-4, 4, 12]);
+  shopRow(f.sub(-30.6, 6, Math.PI / 2), rng, [-12, -4, 4, 12], ['bakery', 'books', 'toys', 'flowers']);
+  shopRow(f.sub(30.6, 4, -Math.PI / 2), rng, [-4, 4, 12], ['sweets', 'clothes', 'cafe']);
 
   const ax = c.x;
   const az = c.z + PLAZA.academyZ;

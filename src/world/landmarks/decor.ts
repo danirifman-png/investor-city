@@ -7,6 +7,7 @@ import type { Frame } from '../Frame';
 import { bench, flowerBed } from '../props';
 import type { BuildContext } from '../types';
 import { buildRiver, nearRiver, rippleTexture, RIVER } from './river';
+import { shopWindow, type ShopKind } from '../shopWindows';
 
 /**
  * Set dressing for the vivid world: market stalls, lanterns, bunting, a
@@ -416,7 +417,7 @@ const ROOF = ['#b8583a', '#a64b32', '#c46a45', '#8e4a35', '#6b6f75'];
  * A row of storybook shop houses facing local +z: pastel plaster, a tiled roof
  * with a dormer, a striped awning and a lit shop window at street level.
  */
-export function shopRow(f: Frame, rng: () => number, along: number[]): void {
+export function shopRow(f: Frame, rng: () => number, along: number[], kinds: ShopKind[] = []): void {
   along.forEach((x, i) => {
     const w = 7.4;
     const h = 7.5 + rng() * 3.5;
@@ -427,13 +428,72 @@ export function shopRow(f: Frame, rng: () => number, along: number[]): void {
     f.facade(w, h, d, col, { x, y: 0.7 }, 3.6, 3.7);
     f.box(w + 0.4, 0.35, d + 0.4, '#fff6e6', { x, y: h + 0.7 });
     f.gable(w + 0.6, 2.6 + rng() * 1.2, d + 0.8, roof, { x, y: h + 1.05 });
-    // shop front: a glowing window, a door and a striped awning
+    const [a, b] = AWNINGS[(i + Math.floor(rng() * 5)) % AWNINGS.length];
+    const kind = kinds[i];
     f.ctx.batch.noCollision(() => {
-      f.box(w * 0.62, 2.0, 0.1, '#ffe9b0', { x: x - 0.6, z: d / 2 + 0.03, y: 1.0 }, 'glow');
-      f.box(1.2, 2.4, 0.12, '#6b4a2e', { x: x + w * 0.36, z: d / 2 + 0.04, y: 0.7 });
-      const [a, b] = AWNINGS[(i + Math.floor(rng() * 5)) % AWNINGS.length];
+      if (kind) shopFrontDetail(f, x, d / 2, w, kind, a, i);
+      else {
+        f.box(w * 0.62, 2.0, 0.1, '#ffe9b0', { x: x - 0.6, z: d / 2 + 0.03, y: 1.0 }, 'glow');
+        f.box(1.2, 2.4, 0.12, '#6b4a2e', { x: x + w * 0.36, z: d / 2 + 0.04, y: 0.7 });
+      }
       for (let k = 0; k < 7; k++) f.box(w / 7, 0.08, 1.6, k % 2 ? b : a, { x: x - w / 2 + (k + 0.5) * (w / 7), z: d / 2 + 0.8, y: 3.25, rotX: 0.38 });
       f.box(w, 0.25, 0.08, a, { x, z: d / 2 + 1.55, y: 2.95 });
+      // scalloped valance under the awning's edge
+      for (let k = 0; k < 14; k++) f.cyl(0.26, 0.26, 0.06, k % 2 ? b : a, { x: x - w / 2 + (k + 0.5) * (w / 14), z: d / 2 + 1.58, y: 2.95, rotX: Math.PI / 2 }, 10);
     });
   });
+}
+
+const FRAMES = ['#2f4b3a', '#24344f', '#6b4a2e', '#7a2e2e', '#3b3f46', '#5a3f6e', '#2d5c63'];
+
+/**
+ * A real shop front on the ground floor of a shop house (front face at local
+ * z = `front`): a framed window you can see goods through, a sill with a
+ * flower box, a panelled door with a glass top, a step, a wall lamp and a
+ * hanging blade sign with the shop's name.
+ */
+function shopFrontDetail(f: Frame, x: number, front: number, w: number, kind: ShopKind, accent: string, i: number): void {
+  const frame = FRAMES[i % FRAMES.length];
+  const ww = w * 0.58;
+  const wh = 1.95;
+  const wx = x - 0.75;
+  const wy = 1.05;
+  const z = front;
+  // the goods behind the glass
+  f.place(shopWindow(kind, ww, wh), { x: wx, z: z + 0.04, y: wy + wh / 2 });
+  // frame: head, sill, jambs and two mullions
+  f.box(ww + 0.3, 0.18, 0.16, frame, { x: wx, z: z + 0.06, y: wy + wh });
+  f.box(ww + 0.45, 0.12, 0.34, '#e9dcc3', { x: wx, z: z + 0.15, y: wy - 0.12 });
+  f.box(ww + 0.3, 0.08, 0.16, frame, { x: wx, z: z + 0.06, y: wy - 0.04 });
+  for (const s of [-1, 1]) f.box(0.15, wh, 0.16, frame, { x: wx + s * (ww / 2 + 0.075), z: z + 0.06, y: wy });
+  for (const s of [-1, 1]) f.box(0.06, wh, 0.1, frame, { x: wx + s * (ww / 6), z: z + 0.07, y: wy });
+  // stall riser under the window and a flower box on the sill
+  f.box(ww + 0.3, wy - 0.7, 0.12, frame, { x: wx, z: z + 0.05, y: 0.7 });
+  f.box(ww * 0.8, 0.22, 0.26, '#7a5230', { x: wx, z: z + 0.42, y: wy - 0.36 });
+  const petals = ['#ff6f91', '#ffd23f', '#ffffff', '#c86bfa', '#ff9671'];
+  for (let k = 0; k < 9; k++) {
+    const px = wx - ww * 0.36 + (k / 8) * ww * 0.72;
+    f.sphere(0.11, '#4f9a45', { x: px, z: z + 0.42, y: wy - 0.1 }, 6);
+    f.sphere(0.07, petals[(k + i) % petals.length], { x: px + 0.04, z: z + 0.5, y: wy - 0.02 }, 6);
+  }
+  // door: panelled, a glass top, a brass handle, a step and a frame
+  const dx = x + w * 0.36;
+  f.box(1.36, 2.55, 0.14, frame, { x: dx, z: z + 0.04, y: 0.7 });
+  f.box(1.12, 2.35, 0.1, '#6b4a2e', { x: dx, z: z + 0.08, y: 0.72 });
+  f.box(0.78, 0.85, 0.04, '#e9c27c', { x: dx, z: z + 0.14, y: 1.95 }, 'glow');
+  f.box(0.05, 0.85, 0.06, frame, { x: dx, z: z + 0.16, y: 1.95 });
+  f.box(0.78, 0.05, 0.06, frame, { x: dx, z: z + 0.16, y: 2.35 });
+  f.box(0.78, 0.5, 0.04, '#5a3c24', { x: dx, z: z + 0.14, y: 1.0 });
+  f.sphere(0.06, '#e7b83c', { x: dx - 0.42, z: z + 0.18, y: 1.75 }, 8);
+  f.box(1.6, 0.14, 0.5, '#cbbd9f', { x: dx, z: z + 0.26, y: 0.56 });
+  // a wall lamp beside the door
+  f.box(0.08, 0.3, 0.2, '#2b2b2b', { x: dx + 0.9, z: z + 0.1, y: 2.4 });
+  f.sphere(0.13, '#fff1c4', { x: dx + 0.9, z: z + 0.25, y: 2.62 }, 8, 'glow');
+  // blade sign on a bracket at the house's edge, readable from both directions along the street
+  const bx = x - w / 2 + 0.2;
+  f.box(0.06, 0.06, 1.15, '#2b2b2b', { x: bx, z: z + 0.6, y: 4.35 });
+  f.box(0.08, 0.72, 1.05, accent, { x: bx, z: z + 0.66, y: 3.6 });
+  const name = t(`sign.shop.${kind}`);
+  f.sign(name, 0.98, 0.6, { x: bx + 0.045, z: z + 0.66, y: 3.96, rotY: Math.PI / 2 }, { bg: '#fff8ec', fg: '#3a2e26' });
+  f.sign(name, 0.98, 0.6, { x: bx - 0.045, z: z + 0.66, y: 3.96, rotY: -Math.PI / 2 }, { bg: '#fff8ec', fg: '#3a2e26' });
 }
