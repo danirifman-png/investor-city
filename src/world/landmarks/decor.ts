@@ -8,6 +8,7 @@ import { bench, flowerBed } from '../props';
 import type { BuildContext } from '../types';
 import { buildRiver, nearRiver, rippleTexture, RIVER } from './river';
 import { shopWindow, type ShopKind } from '../shopWindows';
+import type { ModelKey } from '../ModelLayer';
 
 /**
  * Set dressing for the vivid world: market stalls, lanterns, bunting, a
@@ -424,12 +425,20 @@ export function shopRow(f: Frame, rng: () => number, along: number[], kinds: Sho
     const d = 4.2;
     const col = PLASTER[Math.floor(rng() * PLASTER.length)];
     const roof = ROOF[Math.floor(rng() * ROOF.length)];
+    const roofH = 2.6 + rng() * 1.2;
+    const [a, b] = AWNINGS[(i + Math.floor(rng() * 5)) % AWNINGS.length];
+    const kind = kinds[i];
+    if (kind) {
+      // a hand-made storybook shop house (Meshy), with its Hebrew sign
+      f.model(SHOP_MODEL[kind], { x, z: 0.05 });
+      const sp = SHOP_SIGN[kind];
+      f.sign(t(`sign.shop.${kind}`), sp.w, sp.h, { x: x + sp.x, z: sp.z, y: sp.y, rotY: sp.rotY ?? 0 }, { bg: '#fff8ec', fg: '#3a2e26', border: '#8a5a34' });
+      return;
+    }
     f.box(w, 0.7, d + 0.2, '#d6c7aa', { x, z: 0 });
     f.facade(w, h, d, col, { x, y: 0.7 }, 3.6, 3.7);
     f.box(w + 0.4, 0.35, d + 0.4, '#fff6e6', { x, y: h + 0.7 });
-    f.gable(w + 0.6, 2.6 + rng() * 1.2, d + 0.8, roof, { x, y: h + 1.05 });
-    const [a, b] = AWNINGS[(i + Math.floor(rng() * 5)) % AWNINGS.length];
-    const kind = kinds[i];
+    f.gable(w + 0.6, roofH, d + 0.8, roof, { x, y: h + 1.05 });
     f.ctx.batch.noCollision(() => {
       if (kind) shopFrontDetail(f, x, d / 2, w, kind, a, i);
       else {
@@ -443,6 +452,27 @@ export function shopRow(f: Frame, rng: () => number, along: number[], kinds: Sho
     });
   });
 }
+
+const SHOP_MODEL: Record<ShopKind, ModelKey> = {
+  bakery: 'shop_bakery',
+  books: 'shop_bookshop',
+  toys: 'shop_toys',
+  flowers: 'shop_flowers',
+  sweets: 'shop_sweets',
+  clothes: 'shop_boutique',
+  cafe: 'shop_cafe',
+};
+
+/** Where each shop house's Hebrew sign goes (local to the house, front at z = 2.25). */
+const SHOP_SIGN: Record<ShopKind, { x: number; y: number; z: number; w: number; h: number; rotY?: number }> = {
+  bakery: { x: 0, y: 4.55, z: 2.45, w: 2.6, h: 0.6 },
+  books: { x: 0, y: 4.55, z: 2.45, w: 2.6, h: 0.6 },
+  toys: { x: 0.25, y: 3.72, z: 2.5, w: 1.9, h: 0.5 },
+  flowers: { x: 0, y: 4.55, z: 2.45, w: 2.6, h: 0.6 },
+  sweets: { x: 0, y: 4.55, z: 2.6, w: 2.6, h: 0.6 },
+  clothes: { x: 0, y: 4.55, z: 2.45, w: 2.6, h: 0.6 },
+  cafe: { x: 0, y: 4.55, z: 2.5, w: 2.6, h: 0.6 },
+};
 
 const FRAMES = ['#2f4b3a', '#24344f', '#6b4a2e', '#7a2e2e', '#3b3f46', '#5a3f6e', '#2d5c63'];
 

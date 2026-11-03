@@ -453,7 +453,7 @@ export function buildOpeningPlaza(lot: Lot, ctx: BuildContext, newsTower: (f: Fr
   bench(f, 14, 12, -Math.PI / 2 + 0.3);
   bench(f, -15, 12.5, Math.PI / 2);
   // lamps lining the path
-  for (const [x, z] of [[-6, -3], [11.5, 9], [-16, 19], [17, 19.5]]) streetLamp(f, x, z);
+  for (const [x, z] of [[-6, -3], [11.5, 9], [-16, 19], [17, 19.5]]) plazaLamp(f, x, z);
   // lush round trees framing the academy and the square
   const trees: [number, number, number][] = [
     [-19, -12, 1.35], [-24, -2, 1.25], [19, -11, 1.3], [26, -4, 1.2],
@@ -466,6 +466,7 @@ export function buildOpeningPlaza(lot: Lot, ctx: BuildContext, newsTower: (f: Fr
   // pastel shop rows on both sides
   shopRow(f.sub(-30.6, 6, Math.PI / 2), rng, [-12, -4, 4, 12], ['bakery', 'books', 'toys', 'flowers']);
   shopRow(f.sub(30.6, 4, -Math.PI / 2), rng, [-4, 4, 12], ['sweets', 'clothes', 'cafe']);
+  plazaDressing(f, rng);
 
   const ax = c.x;
   const az = c.z + PLAZA.academyZ;
@@ -473,4 +474,89 @@ export function buildOpeningPlaza(lot: Lot, ctx: BuildContext, newsTower: (f: Fr
   ctx.addPoi({ id: 'newsTower', key: 'newsTower', zone: lot.zone, x: c.x + 23, z: c.z - 23, height: 50, w: 11, d: 11, landmark: true });
   ctx.addPoi({ id: 'plazaMarket', key: 'plazaMarket', zone: lot.zone, x: c.x + PLAZA.stall.x, z: c.z + PLAZA.stall.z, height: 4.5, w: 7, d: 5, landmark: false });
   ctx.addPoi({ id: 'fountain', key: 'fountain', zone: lot.zone, x: c.x + PLAZA.fountain.x, z: c.z + PLAZA.fountain.z, height: 6, w: 12, d: 12, landmark: false });
+}
+
+/**
+ * Small things that make the square feel lived in: a coin mosaic set into the
+ * path, strings of bunting from one row of shops to the other, planters along
+ * the path and a café terrace in front of the café.
+ */
+function plazaDressing(f: Frame, rng: () => number): void {
+  f.ctx.batch.noCollision(() => {
+    // coin mosaic in the path: stone rings, an eight-point star and a gold centre
+    const m = { x: 0, z: 10 };
+    const y = 0.1;
+    f.cyl(3.3, 3.3, 0.025, '#a88e6a', { ...m, y }, 48);
+    f.cyl(3.05, 3.05, 0.03, '#e8dcc2', { ...m, y }, 48);
+    f.cyl(2.35, 2.35, 0.035, '#c9b08a', { ...m, y }, 48);
+    for (let k = 0; k < 8; k++) {
+      const a = (k / 8) * Math.PI * 2;
+      f.box(0.5, 0.04, 2.1, k % 2 ? '#e7d6b3' : '#b8873f', { x: m.x + Math.sin(a) * 1.05, z: m.z + Math.cos(a) * 1.05, y, rotY: a });
+    }
+    f.cyl(0.75, 0.75, 0.05, '#e7b83c', { ...m, y }, 32);
+    f.cyl(0.5, 0.5, 0.06, '#f6d57a', { ...m, y }, 32);
+    for (let k = 0; k < 24; k++) {
+      const a = (k / 24) * Math.PI * 2;
+      f.box(0.22, 0.04, 0.22, k % 2 ? '#7a9cc6' : '#c96a4a', { x: m.x + Math.sin(a) * 2.7, z: m.z + Math.cos(a) * 2.7, y, rotY: a });
+    }
+
+    // bunting: three strings from facade to facade, sagging in the middle
+    const flagCols = ['#e34b4b', '#ffd84d', '#3fb6e8', '#4fc79a', '#a57cf2', '#ff9e3d'];
+    const flag = new THREE.BufferGeometry();
+    flag.setAttribute('position', new THREE.Float32BufferAttribute([-0.22, 0, 0, 0.22, 0, 0, 0, -0.42, 0, 0.22, 0, 0, -0.22, 0, 0, 0, -0.42, 0], 3));
+    flag.computeVertexNormals();
+    for (const [z0, z1] of [[-2, 3], [9, 12], [20, 18]] as [number, number][]) {
+      const x0 = -28.3;
+      const x1 = 28.3;
+      const top = 7.4;
+      const sag = 2.2;
+      const at = (t2: number) => ({ x: x0 + (x1 - x0) * t2, z: z0 + (z1 - z0) * t2, y: top - sag * 4 * t2 * (1 - t2) });
+      const segs = 40;
+      for (let i = 0; i < segs; i++) {
+        const a = at(i / segs);
+        const b = at((i + 1) / segs);
+        const len = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+        const yaw = Math.atan2(b.x - a.x, b.z - a.z);
+        const pitch = Math.asin((b.y - a.y) / len);
+        f.box(0.03, 0.03, len, '#f4efe4', { x: (a.x + b.x) / 2, z: (a.z + b.z) / 2, y: (a.y + b.y) / 2 - 0.015, rotY: yaw, rotX: -pitch });
+      }
+      const n = 52;
+      const yaw = Math.atan2(z1 - z0, x1 - x0);
+      for (let i = 1; i < n; i++) {
+        const p = at(i / n);
+        const g = flag.clone();
+        f.geo(g, flagCols[(i + Math.floor(rng() * 2)) % flagCols.length], { x: p.x, z: p.z, y: p.y, rotY: -yaw });
+      }
+    }
+    flag.dispose();
+  });
+
+  // planters along the path (solid: they are part of the square's furniture)
+  const petals = ['#ff6f91', '#ffd23f', '#ffffff', '#c86bfa', '#ff9671'];
+  for (const sx of [-1, 1]) {
+    for (const z of [13.5, 22.5]) {
+      const x = sx * 6.6;
+      f.box(1.5, 0.6, 1.5, '#9a6a3e', { x, z, y: 0.1 });
+      f.box(1.6, 0.08, 1.6, '#6e4a2a', { x, z, y: 0.7 });
+      f.ctx.batch.noCollision(() => {
+        f.sphere(0.55, '#4f9a45', { x, z, y: 1.15 }, 12);
+        for (let k = 0; k < 7; k++) {
+          const a = (k / 7) * Math.PI * 2;
+          f.sphere(0.12, petals[(k + (z > 15 ? 2 : 0)) % petals.length], { x: x + Math.sin(a) * 0.55, z: z + Math.cos(a) * 0.55, y: 0.95 }, 6);
+        }
+      });
+    }
+  }
+
+  // a flower cart by the path
+  f.model('flower_cart', { x: -6.8, z: 3.2, rotY: Math.PI / 2 });
+}
+
+/** A three-lantern cast-iron lamp (Meshy) with glowing lanterns for the night. */
+function plazaLamp(f: Frame, x: number, z: number): void {
+  f.model('plaza_lamp', { x, z });
+  f.ctx.batch.noCollision(() => {
+    f.sphere(0.16, '#ffe9b0', { x, z, y: 3.55 }, 8, 'glow');
+    for (const s of [-1, 1]) f.sphere(0.14, '#ffe9b0', { x: x + s * 0.62, z, y: 3.05 }, 8, 'glow');
+  });
 }

@@ -67,6 +67,16 @@ export const MODEL_SIZES = {
   reception_desk: [1.88, 1.1, 0.87],
   pizza_oven_brick: [1.85, 2.2, 1.83],
   bistro_table_chairs: [1.34, 0.9, 0.84],
+  // the opening plaza (models/meshy/plaza)
+  shop_bakery: [7.5, 11, 4.5],
+  shop_bookshop: [7.5, 11, 4.5],
+  shop_boutique: [7.5, 11, 4.5],
+  shop_cafe: [7.5, 11, 4.6],
+  shop_flowers: [7.5, 11, 4.5],
+  shop_sweets: [7.0, 11, 4.9],
+  shop_toys: [7.5, 11, 4.5],
+  flower_cart: [2.2, 1.96, 1.02],
+  plaza_lamp: [1.75, 4.0, 1.07],
 } as const satisfies Record<string, readonly [number, number, number]>;
 
 export type ModelKey = keyof typeof MODEL_SIZES;
@@ -96,7 +106,8 @@ interface Area {
   state: 'idle' | 'loading' | 'ready';
 }
 
-export const modelUrl = (key: ModelKey) => `models/meshy/props/${key}.glb`;
+const PLAZA_MODELS = new Set<string>(['shop_bakery', 'shop_bookshop', 'shop_boutique', 'shop_cafe', 'shop_flowers', 'shop_sweets', 'shop_toys', 'flower_cart', 'plaza_lamp']);
+export const modelUrl = (key: ModelKey) => `models/meshy/${PLAZA_MODELS.has(key) ? 'plaza' : 'props'}/${key}.glb`;
 
 export class ModelLayer {
   readonly root = new THREE.Group();
