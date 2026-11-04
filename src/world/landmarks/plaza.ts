@@ -471,7 +471,7 @@ export function buildOpeningPlaza(lot: Lot, ctx: BuildContext, newsTower: (f: Fr
   const ax = c.x;
   const az = c.z + PLAZA.academyZ;
   ctx.addPoi({ id: 'exchange', key: 'exchange', zone: lot.zone, x: ax, z: az - 2, height: 26, w: 30, d: 18, landmark: true });
-  ctx.addPoi({ id: 'newsTower', key: 'newsTower', zone: lot.zone, x: c.x + 23, z: c.z - 23, height: 50, w: 11, d: 11, landmark: true });
+  ctx.addPoi({ id: 'newsTower', key: 'newsTower', zone: lot.zone, x: c.x + 23, z: c.z - 23, height: 33, w: 8, d: 8, landmark: true });
   ctx.addPoi({ id: 'plazaMarket', key: 'plazaMarket', zone: lot.zone, x: c.x + PLAZA.stall.x, z: c.z + PLAZA.stall.z, height: 4.5, w: 7, d: 5, landmark: false });
   ctx.addPoi({ id: 'fountain', key: 'fountain', zone: lot.zone, x: c.x + PLAZA.fountain.x, z: c.z + PLAZA.fountain.z, height: 6, w: 12, d: 12, landmark: false });
 }

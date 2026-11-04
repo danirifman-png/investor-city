@@ -98,6 +98,12 @@ export const MODEL_SIZES = {
   energy_hq: [19.5, 15, 10],
   fitness_centre: [22.3, 7.9, 8.3],
   hall: [15.7, 12, 10],
+  office_tower_blue: [8.3, 22.9, 8],
+  office_tower_pink: [8.3, 22.9, 8],
+  tech_hq: [22.3, 15, 10],
+  news_tower: [5.7, 30.8, 5.4],
+  warehouse: [19.5, 9, 10],
+  data_center: [18.3, 9, 10],
 } as const satisfies Record<string, readonly [number, number, number]>;
 
 export type ModelKey = keyof typeof MODEL_SIZES;
@@ -128,7 +134,7 @@ interface Area {
 }
 
 const PLAZA_MODELS = new Set<string>(['shop_bakery', 'shop_bookshop', 'shop_boutique', 'shop_cafe', 'shop_flowers', 'shop_sweets', 'shop_toys', 'flower_cart', 'plaza_lamp']);
-const CIVIC_MODELS = new Set<string>(['hospital', 'lab', 'energy_hq', 'fitness_centre', 'hall']);
+const CIVIC_MODELS = new Set<string>(['hospital', 'lab', 'energy_hq', 'fitness_centre', 'hall', 'office_tower_blue', 'office_tower_pink', 'tech_hq', 'news_tower', 'warehouse', 'data_center']);
 const QUATERNIUS_MODELS = new Set<string>(['bench', 'barrel', 'barrel_apples', 'crate_wooden', 'farmcrate_carrot', 'bucket_wooden_1']);
 export const modelUrl = (key: ModelKey) =>
   CIVIC_MODELS.has(key) || key.startsWith('house_')

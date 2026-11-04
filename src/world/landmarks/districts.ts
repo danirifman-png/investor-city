@@ -61,17 +61,6 @@ function shopFront(f: Frame, x: number, front: number, w: number, d: number, flo
   void d;
 }
 
-/** Rooftop clutter that makes flat roofs read as real buildings. */
-function roofUnits(f: Frame, x: number, z: number, y: number, w: number, d: number, rng: () => number): void {
-  const n = 1 + Math.floor(rng() * 3);
-  for (let i = 0; i < n; i++) {
-    f.box(1.4 + rng() * 1.6, 0.9 + rng() * 0.8, 1.2 + rng() * 1.2, '#b9bec6', {
-      x: x + (rng() - 0.5) * (w - 3),
-      z: z + (rng() - 0.5) * (d - 3),
-      y,
-    });
-  }
-}
 
 
 function sidewalkTrees(f: Frame, rng: () => number, edges: ('n' | 's' | 'e' | 'w')[] = ['s']): void {
@@ -86,62 +75,32 @@ function sidewalkTrees(f: Frame, rng: () => number, edges: ('n' | 's' | 'e' | 'w
 
 /* ---------------------------- Technology ---------------------------- */
 
-const techHQ: LotBuilder = (f, ctx) => {
+const techHQ: LotBuilder = (f) => {
   lotGround(f, 24, 24, PAVING);
-  f.box(18, 4, 18, '#294766', { z: -1 }, 'glass');
-  f.box(18.6, 0.4, 18.6, '#e6eef6', { z: -1, y: 4 });
-  const floors = 13;
-  let y = 4.4;
-  for (let i = 0; i < floors; i++) {
-    const rot = i * 0.075;
-    f.box(11.5, 2.9, 11.5, '#4fb4e3', { z: -1, y, rotY: rot }, 'glass');
-    f.box(12.1, 0.35, 12.1, '#f0f6fb', { z: -1, y: y + 2.9, rotY: rot });
-    y += 3.25;
-  }
-  f.cyl(0.15, 0.3, 7, '#d0d8e0', { z: -1, y }, 6);
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(4.5, 0.18, 8, 40), new THREE.MeshBasicMaterial({ color: '#7ef0ff' }));
-  ring.rotation.x = Math.PI / 2;
-  f.place(ring, { z: -1, y: y + 0.6 });
-  ctx.addAnimator((time) => {
-    ring.scale.setScalar(1 + Math.sin(time * 2) * 0.05);
-  });
-  beacon(f, 0, y + 7.2, -1, '#ff4040');
-  f.sign(t('sign.pixel'), 8, 1.6, { z: 8.12, y: 2.2 }, { bg: '#13233a', fg: '#7ef0ff' });
+  // a three-storey storybook headquarters (front at z = 4)
+  f.model('tech_hq', { z: -1 });
+  f.sign(t('sign.pixel'), 7, 1.3, { z: 4.08, y: 3.7 }, { bg: '#13233a', fg: '#7ef0ff' });
   for (const x of [-9, 9]) palm(f, x, 10, 0.9);
   bench(f, -4, 10.5, Math.PI);
-  return y + 7;
+  return 17;
 };
 
 const dataCenter: LotBuilder = (f) => {
   lotGround(f, 24, 24, '#c9ccd2');
-  for (const z of [-5.5, 5.5]) {
-    f.box(21, 6.5, 9, '#dfe4ea', { z });
-    f.box(21, 0.5, 0.3, '#3fb6e8', { z: z + 4.6, y: 4.6 }, 'glow');
-    for (let i = 0; i < 4; i++) {
-      f.cyl(1.2, 1.2, 0.9, '#9aa3ad', { x: -7.5 + i * 5, z, y: 6.5 }, 14);
-      f.cyl(1.0, 1.0, 0.1, '#3a4048', { x: -7.5 + i * 5, z, y: 7.41 }, 14);
-    }
-    for (let i = 0; i < 6; i++) beacon(f, -9 + i * 3.6, 1.6, z + 4.55, i % 2 ? '#46f08f' : '#3fb6e8', 0.6 + i * 0.13, 0.14);
-  }
-  f.sign(t('sign.cloud'), 6, 1.2, { z: 10.06, y: 2.6 }, { bg: '#1c2b44', fg: '#a8e6ff' });
+  for (const z of [-5.5, 5.5]) f.model('data_center', { z });
+  f.sign(t('sign.cloud'), 6, 1.2, { z: 10.56, y: 2.6 }, { bg: '#1c2b44', fg: '#a8e6ff' });
   fence(f.sub(0, 0), 24, 24, '#8d96a0', 5);
-  return 8;
+  return 10;
 };
 
 const startupHub: LotBuilder = (f, ctx) => {
   lotGround(f, 24, 24, PAVING);
-  const colors = ['#ff7a59', '#ffc94a', '#4fc79a', '#3fb6e8', '#a57cf2', '#ff6b9a'];
   const rng = ctx.rng;
-  for (let level = 0; level < 4; level++) {
-    for (let k = 0; k < 3 - Math.floor(level / 2); k++) {
-      const x = -6 + k * 6 + (rng() - 0.5) * 2;
-      const z = -3 + (rng() - 0.5) * 4;
-      f.facade(7, 3.1, 4, colors[(level * 3 + k) % colors.length], { x, z, y: level * 3.15, rotY: (rng() - 0.5) * 0.25 }, 3.1, 2.4);
-    }
-  }
+  // three colourful narrow houses side by side, like a young company's first home
+  (['house_peach', 'house_mint', 'house_pink'] as ModelKey[]).forEach((key, k) => f.model(key, { x: -6 + k * 6, z: -3.8 }));
   umbrellaTable(f, -6, 8, '#ffc94a');
   umbrellaTable(f, 0, 8, '#4fc79a');
-  f.sign(t('sign.startup'), 7, 1.2, { z: 1.2, y: 3.3 }, { bg: '#ff7a59' });
+  f.sign(t('sign.startup'), 6, 1.1, { z: 1.0, y: 3.4 }, { bg: '#ff7a59' });
   sidewalkTrees(f, rng);
   return 14;
 };
@@ -404,11 +363,10 @@ function bankDressing(f: Frame): void {
 const officeTower: LotBuilder = (f, ctx) => {
   const rng = ctx.rng;
   lotGround(f, 24, 24, PAVING);
-  const h1 = 24 + rng() * 14;
-  const glass = pick(['#5d86b8', '#4f9bb5', '#6c7fb0', '#7d9cc0'], rng);
-  f.box(11, h1, 11, glass, { x: -5, z: -4 }, 'glass');
-  for (let y = 3.6; y < h1; y += 3.6) f.box(11.3, 0.3, 11.3, '#e9eef4', { x: -5, z: -4, y });
-  roofUnits(f, -5, -4, h1, 11, 11, rng);
+  // a tall storybook town tower (pink or blue)
+  const towerKey: ModelKey = spotSeed(f, -5, -4) % 2 ? 'office_tower_pink' : 'office_tower_blue';
+  f.model(towerKey, { x: -5, z: -4 });
+  const h1 = MODEL_SIZES[towerKey][1];
   rng();
   pick(['#e8e1d6', '#d9e2ea', '#efe3d1'], rng);
   const h2 = storyHouse(f, HOUSES_WIDE, spotSeed(f, 6.5, 2), 6.5, 2);
@@ -419,22 +377,19 @@ const officeTower: LotBuilder = (f, ctx) => {
 
 const portfolioHQ: LotBuilder = (f, ctx) => {
   lotGround(f, 24, 24, '#e2e6ec');
-  f.facade(20, 8, 18, '#2a3550', { z: -1 }, 4, 3.5);
-  const H = 44;
-  f.box(14, H, 14, '#3d5a8a', { z: -1, y: 8 }, 'glass');
-  for (let y = 8; y < 8 + H; y += 4.4) f.box(14.4, 0.35, 14.4, '#d8c27a', { z: -1, y });
-  f.box(10, 8, 10, '#4a6ca3', { z: -1, y: 8 + H }, 'glass');
-  const top = 8 + H + 8;
-  f.box(10.6, 0.5, 10.6, '#d8c27a', { z: -1, y: top });
+  // the tallest town tower, with a golden crown and halo on top
+  f.model('office_tower_blue', { z: -1 });
+  const top = MODEL_SIZES.office_tower_blue[1] + 1.2;
+  f.box(4.2, 0.4, 4.2, '#d8c27a', { z: -1, y: top - 1.2 });
   // golden crown
-  f.geo(new THREE.OctahedronGeometry(3.4, 0).scale(1, 1.7, 1), '#e7b83c', { z: -1, y: top + 5.2 }, 'glass');
-  const halo = new THREE.Mesh(new THREE.TorusGeometry(5.8, 0.2, 8, 48), new THREE.MeshBasicMaterial({ color: '#ffd96b' }));
+  f.geo(new THREE.OctahedronGeometry(1.8, 0).scale(1, 1.7, 1), '#e7b83c', { z: -1, y: top + 3.2 }, 'glass');
+  const halo = new THREE.Mesh(new THREE.TorusGeometry(3.4, 0.16, 8, 48), new THREE.MeshBasicMaterial({ color: '#ffd96b' }));
   halo.rotation.x = Math.PI / 2;
   f.place(halo, { z: -1, y: top + 1.2 });
   ctx.addAnimator((time) => {
     halo.position.y = f.baseY + top + 1.2 + Math.sin(time * 1.2) * 0.4;
   });
-  f.sign(t('sign.portfolio'), 9, 1.6, { z: 8.07, y: 5.5 }, { bg: '#1f2a44', fg: '#ffd96b' });
+  f.sign(t('sign.portfolio'), 6, 1.2, { z: 3.08, y: 3.6 }, { bg: '#1f2a44', fg: '#ffd96b' });
   for (const x of [-10, 10]) palm(f, x, 10, 1);
   return top + 11;
 };
@@ -533,36 +488,22 @@ const realEstateAgency: LotBuilder = (f, ctx) => {
 
 const factory: LotBuilder = (f, ctx) => {
   lotGround(f, 24, 24, '#bdbdb5');
-  f.box(22, 8, 15, '#c9ccd1', { z: -3.5 });
-  // sawtooth roof
-  for (let i = 0; i < 5; i++) {
-    const x = -8.8 + i * 4.4;
-    f.box(4.4, 0.25, 4.6, '#9aa3ad', { x: x + 0.3, z: -3.5, y: 9.4, rotZ: -0.5 });
-    f.box(0.2, 2.2, 15, '#bfe3ff', { x: x + 2.1, z: -3.5, y: 8 }, 'glass');
-  }
-  f.box(22, 0.3, 15, '#9aa3ad', { z: -3.5, y: 8 });
+  f.model('warehouse', { z: -3.5 });
   // chimneys
-  for (const [x, z] of [[-7, -9], [-3, -9]] as [number, number][]) {
+  for (const [x, z] of [[-7, -9.6], [-3, -9.6]] as [number, number][]) {
     f.cyl(0.9, 1.2, 18, '#e8e8e8', { x, z }, 12);
     for (let y = 12; y < 18; y += 3) f.cyl(0.95, 0.95, 1.2, '#e34b4b', { x, z, y }, 12);
     smoke(ctx, x + f.ox, f.baseY + 18.5, z + f.oz, '#cfd3d8');
   }
-  f.box(8, 5, 0.2, '#5d6670', { x: 3, z: 4.05 });
-  f.sign(t('sign.factory'), 8, 1.3, { x: -5, z: 4.12, y: 5.6 }, { bg: '#9aa3ad', fg: '#1f2a44' });
+  f.sign(t('sign.factory'), 6, 1.1, { x: -5.5, z: 1.58, y: 6.2 }, { bg: '#9aa3ad', fg: '#1f2a44' });
   truck(f, 6, 9, Math.PI / 2, '#3d7be0');
   return 20;
 };
 
 const warehouses: LotBuilder = (f) => {
   lotGround(f, 24, 24, '#c2c2ba');
-  const colors = ['#d4dbe3', '#e7d7c1'];
-  for (let k = 0; k < 2; k++) {
-    const z = -6.5 + k * 11;
-    f.box(22, 5.5, 8.5, colors[k], { z });
-    f.geo(new THREE.CylinderGeometry(4.25, 4.25, 22, 16, 1, false, -Math.PI / 2, Math.PI), colors[k], { z, y: 5.5, rotZ: Math.PI / 2 });
-    for (let i = 0; i < 4; i++) f.box(3, 3.5, 0.15, '#5d6670', { x: -8 + i * 5.3, z: z + 4.3 });
-  }
-  f.sign(t('sign.logistics'), 6, 1.2, { z: -2.1, y: 4.2 }, { bg: '#3d7be0' });
+  for (const z of [-6.5, 4.5]) f.model('warehouse', { z });
+  f.sign(t('sign.logistics'), 6, 1.2, { x: -5.5, z: -1.42, y: 6.2 }, { bg: '#3d7be0' });
   truck(f, -6, 11, Math.PI / 2, '#e34b4b');
   return 10;
 };
@@ -588,10 +529,8 @@ const containerYard: LotBuilder = (f, ctx) => {
 
 const workshop: LotBuilder = (f, ctx) => {
   lotGround(f, 24, 24, '#c9bf9f');
-  f.box(14, 6, 10, '#b5583f', { z: -4 });
-  f.gable(14.4, 3, 10.6, '#5d4a3d', { z: -4, y: 6 });
-  f.box(4, 4, 0.15, '#6b4a2f', { x: -3, z: 1.05 });
-  f.sign(t('sign.workshop'), 5, 1.1, { x: 3, z: 1.1, y: 4 }, { bg: '#6b4a2f' });
+  f.model('hall', { z: -4 });
+  f.sign(t('sign.workshop'), 5, 1.1, { x: 3, z: 1.08, y: 4 }, { bg: '#6b4a2f' });
   for (let i = 0; i < 6; i++) f.cyl(0.35, 0.35, 5, '#a9774a', { x: 4 + (i % 3) * 0.75, z: 6 + Math.floor(i / 3) * 0.7, y: 0.35 + Math.floor(i / 3) * 0.6, rotX: Math.PI / 2 }, 7);
   truck(f, -6, 7, 0, '#4fc79a');
   bin(f, 9, 2);

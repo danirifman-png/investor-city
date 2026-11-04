@@ -57,25 +57,21 @@ function newsScreenTexture(): { tex: THREE.CanvasTexture; draw: (i: number) => v
 }
 
 function newsTower(f: Frame, ctx: BuildContext): void {
-  const H = 40;
-  f.box(12, 0.6, 12, STONE_DARK);
-  f.box(10, 5, 10, '#4a6fa8', { y: 0.6 }, 'glass');
-  f.facade(9, H - 5, 9, '#a9c8f0', { y: 5.6 }, 3.4, 2.6);
-  for (let y = 9; y < H; y += 6.8) f.box(9.4, 0.35, 9.4, '#dfe6f1', { y });
-  // screen box
-  const sy = H + 0.6;
-  f.box(11, 8, 11, '#1b2438', { y: sy });
+  f.box(8, 0.6, 8, STONE_DARK);
+  // a slim storybook clock tower with a spire; the news runs on screens around its top storey
+  f.model('news_tower', { y: 0.6 });
+  const sy = 0.6 + 22.5;
   const { tex, draw } = newsScreenTexture();
   const screenMat = new THREE.MeshBasicMaterial({ map: tex });
   // four screen faces in one geometry (one draw call)
   const faces = [0, 1, 2, 3].map((i) => {
     const a = (i * Math.PI) / 2;
-    const g = new THREE.PlaneGeometry(10, 5);
+    const g = new THREE.PlaneGeometry(5, 2.6);
     g.rotateY(a);
-    g.translate(Math.sin(a) * 5.52, 0, Math.cos(a) * 5.52);
+    g.translate(Math.sin(a) * 2.95, 0, Math.cos(a) * 2.95);
     return g;
   });
-  f.place(new THREE.Mesh(mergeGeometries(faces)!, screenMat), { y: sy + 4 });
+  f.place(new THREE.Mesh(mergeGeometries(faces)!, screenMat), { y: sy });
   let idx = 0;
   let acc = 0;
   ctx.addAnimator((_, dt) => {
@@ -85,11 +81,7 @@ function newsTower(f: Frame, ctx: BuildContext): void {
       draw(++idx);
     }
   });
-  f.box(9, 1.4, 9, '#3f5f93', { y: sy + 8 });
-  // antenna and dish
-  f.cyl(0.18, 0.4, 10, '#c9d1dc', { y: sy + 9.4 }, 6);
-  f.geo(new THREE.SphereGeometry(1.6, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2.4), '#f1f3f6', { x: 2.5, z: 1.5, y: sy + 10.2, rotX: -0.9 });
-  beacon(f, 0, sy + 19.6, 0, '#ff3b3b', 1.4, 0.45);
+  beacon(f, 0, 0.6 + 31.2, 0, '#ff3b3b', 1.4, 0.45);
 }
 
 export function buildCentralPlaza(lot: Lot, ctx: BuildContext): void {
