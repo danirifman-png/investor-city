@@ -84,6 +84,20 @@ export const MODEL_SIZES = {
   crate_wooden: [0.84, 0.93, 0.91],
   farmcrate_carrot: [0.71, 0.41, 0.57],
   bucket_wooden_1: [0.43, 0.29, 0.38],
+  // storybook houses built from the CC0 Quaternius village kit (models/quaternius/houses)
+  house_pink: [5.5, 9.8, 7.6],
+  house_yellow: [8.3, 10.9, 8.0],
+  house_mint: [5.5, 12.8, 7.6],
+  house_blue: [8.3, 10.9, 9.7],
+  house_lavender: [5.5, 12.8, 9.7],
+  house_cream: [8.3, 13.9, 8.0],
+  house_peach: [5.5, 9.8, 5.6],
+  house_sage: [8.3, 10.9, 9.7],
+  hospital: [24.3, 15, 10],
+  lab: [20, 10.9, 8.3],
+  energy_hq: [19.5, 15, 10],
+  fitness_centre: [22.3, 7.9, 8.3],
+  hall: [15.7, 12, 10],
 } as const satisfies Record<string, readonly [number, number, number]>;
 
 export type ModelKey = keyof typeof MODEL_SIZES;
@@ -114,9 +128,12 @@ interface Area {
 }
 
 const PLAZA_MODELS = new Set<string>(['shop_bakery', 'shop_bookshop', 'shop_boutique', 'shop_cafe', 'shop_flowers', 'shop_sweets', 'shop_toys', 'flower_cart', 'plaza_lamp']);
+const CIVIC_MODELS = new Set<string>(['hospital', 'lab', 'energy_hq', 'fitness_centre', 'hall']);
 const QUATERNIUS_MODELS = new Set<string>(['bench', 'barrel', 'barrel_apples', 'crate_wooden', 'farmcrate_carrot', 'bucket_wooden_1']);
 export const modelUrl = (key: ModelKey) =>
-  QUATERNIUS_MODELS.has(key) ? `models/quaternius/${key}.glb` : `models/meshy/${PLAZA_MODELS.has(key) ? 'plaza' : 'props'}/${key}.glb`;
+  CIVIC_MODELS.has(key) || key.startsWith('house_')
+    ? `models/quaternius/houses/${key}.glb`
+    : QUATERNIUS_MODELS.has(key) ? `models/quaternius/${key}.glb` : `models/meshy/${PLAZA_MODELS.has(key) ? 'plaza' : 'props'}/${key}.glb`;
 
 export class ModelLayer {
   readonly root = new THREE.Group();

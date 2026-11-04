@@ -21,20 +21,44 @@ const CAR_COLORS = ['#e34b4b', '#3d7be0', '#f2c14e', '#ffffff', '#2c2f36', '#4fc
 
 const pick = <T,>(arr: T[], rng: () => number) => arr[Math.floor(rng() * arr.length)];
 
+/** Storybook timber houses (CC0 village kit), by width class. */
+const HOUSES_NARROW: ModelKey[] = ['house_pink', 'house_mint', 'house_lavender', 'house_peach'];
+const HOUSES_WIDE: ModelKey[] = ['house_yellow', 'house_blue', 'house_cream', 'house_sage'];
+const HOUSES_TALL: ModelKey[] = ['house_mint', 'house_lavender', 'house_cream'];
+
+/**
+ * A storybook house instead of a box building. `seed` picks the variant
+ * (deterministic, without touching the lot's random stream).
+ */
+function storyHouse(f: Frame, set: ModelKey[], seed: number, x: number, z: number, rotY = 0): number {
+  const key = set[Math.abs(Math.floor(seed)) % set.length];
+  f.model(key, { x, z, rotY });
+  return MODEL_SIZES[key][1];
+}
+/** A position-based seed so neighbouring lots get different houses. */
+const spotSeed = (f: Frame, x: number, z: number) => {
+  const w = f.world({ x, z });
+  return Math.abs(Math.round(w.x! * 7.3 + w.z! * 13.1));
+};
+
 /** Shop with awning and sign, front facing local +z at z = front. */
 function shopFront(f: Frame, x: number, front: number, w: number, d: number, floors: number, wall: string, awning: string, sign: string): void {
-  const h = floors * 3.4;
-  f.facade(w, h, d, wall, { x, z: front - d / 2 }, 3.4, 3);
-  // glass storefront
-  f.box(w - 0.8, 2.6, 0.2, '#9fd0ec', { x, z: front + 0.02, y: 0.1 }, 'glass');
-  // striped awning
-  const stripes = Math.max(3, Math.round(w / 1.1));
-  const sw = w / stripes;
-  for (let i = 0; i < stripes; i++) {
-    f.box(sw, 0.12, 1.6, i % 2 ? '#ffffff' : awning, { x: x - w / 2 + sw * (i + 0.5), z: front + 0.75, y: 2.95, rotX: 0.35 });
-  }
-  f.box(w + 0.2, 0.4, d + 0.2, '#efe9df', { x, z: front - d / 2, y: h });
-  f.sign(sign, Math.min(w - 1, 6), 1, { x, z: front + 0.12, y: 3.85 }, { bg: awning, fg: '#ffffff' });
+  void floors;
+  void wall;
+  // a wide storybook house with the shop's awning and sign on its ground floor
+  const key: ModelKey = w >= 11 ? 'house_yellow' : 'house_sage';
+  const [, , md] = MODEL_SIZES[key];
+  f.model(key, { x, z: front - md / 2 });
+  const aw = Math.min(w, MODEL_SIZES[key][0]) - 0.6;
+  const stripes = Math.max(3, Math.round(aw / 1.1));
+  const sw = aw / stripes;
+  f.ctx.batch.noCollision(() => {
+    for (let i = 0; i < stripes; i++) {
+      f.box(sw, 0.1, 1.3, i % 2 ? '#ffffff' : awning, { x: x - aw / 2 + sw * (i + 0.5), z: front + 0.6, y: 3.0, rotX: 0.35 });
+    }
+  });
+  f.sign(sign, Math.min(aw - 1, 5), 0.9, { x, z: front + 0.08, y: 4.05 }, { bg: awning, fg: '#ffffff' });
+  void d;
 }
 
 /** Rooftop clutter that makes flat roofs read as real buildings. */
@@ -49,11 +73,6 @@ function roofUnits(f: Frame, x: number, z: number, y: number, w: number, d: numb
   }
 }
 
-/** Israeli-style rooftop solar water heaters. */
-function solarHeater(f: Frame, x: number, z: number, y: number): void {
-  f.box(1.8, 0.1, 1.2, '#22406e', { x, z, y: y + 0.7, rotX: -0.6 }, 'glass');
-  f.cyl(0.35, 0.35, 1.6, '#e9ecef', { x, z: z - 0.8, y: y + 1.05, rotZ: Math.PI / 2 }, 8);
-}
 
 function sidewalkTrees(f: Frame, rng: () => number, edges: ('n' | 's' | 'e' | 'w')[] = ['s']): void {
   for (const e of edges) {
@@ -145,18 +164,15 @@ const techCampus: LotBuilder = (f, ctx) => {
 
 const hospital: LotBuilder = (f, ctx) => {
   lotGround(f, 24, 24, PAVING);
-  f.facade(22, 15, 10, '#f4f7f9', { z: -6 }, 3.75, 3);
-  f.facade(9, 9, 9, '#e7f2ee', { x: -6, z: 4 }, 3, 3);
-  f.box(22.4, 0.4, 10.4, '#cfe3dc', { z: -6, y: 15 });
-  // helipad
-  f.cyl(4, 4, 0.2, '#3a4048', { z: -6, y: 15.4 }, 24);
-  f.box(0.5, 0.05, 3, '#ffffff', { x: -0.9, z: -6, y: 15.62 });
-  f.box(0.5, 0.05, 3, '#ffffff', { x: 0.9, z: -6, y: 15.62 });
-  f.box(1.8, 0.05, 0.5, '#ffffff', { z: -6, y: 15.62 });
-  // green plus sign (health symbol)
-  f.box(3.4, 1.0, 0.3, '#2fbf71', { x: 6, z: -0.8, y: 11 }, 'glow');
-  f.box(1.0, 3.4, 0.3, '#2fbf71', { x: 6, z: -0.8, y: 9.8 }, 'glow');
-  f.sign(t('poi.hospital.name'), 9, 1.3, { x: 4, z: -0.82, y: 6.6 }, { bg: '#2fbf71' });
+  // a three-storey storybook hospital (front at z = -1) and a small clinic house in front
+  f.model('hospital', { z: -6 });
+  storyHouse(f, ['house_blue'], 0, -7, 5.2);
+  // green plus sign (health symbol) on the plain wall above the door, and the name
+  f.ctx.batch.noCollision(() => {
+    f.box(2.6, 0.8, 0.25, '#2fbf71', { x: 0, z: -0.9, y: 11.2 }, 'glow');
+    f.box(0.8, 2.6, 0.25, '#2fbf71', { x: 0, z: -0.9, y: 10.3 }, 'glow');
+  });
+  f.sign(t('poi.hospital.name'), 7, 1.1, { x: 0, z: -0.85, y: 8.4 }, { bg: '#2fbf71' });
   // ambulance
   f.box(2.2, 2.2, 5, '#ffffff', { x: 5, z: 6, y: 0.4 });
   f.box(2.25, 0.4, 5.05, '#e8473f', { x: 5, z: 6, y: 1.4 });
@@ -167,14 +183,12 @@ const hospital: LotBuilder = (f, ctx) => {
 
 const lab: LotBuilder = (f, ctx) => {
   lotGround(f, 24, 24, GRASS);
-  f.facade(18, 9, 10, '#f2f4f7', { z: -5 }, 3, 3);
-  f.geo(new THREE.SphereGeometry(3.2, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), '#e9eef3', { x: -4, z: -5, y: 9 });
-  f.geo(new THREE.SphereGeometry(2.2, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), '#e9eef3', { x: 4, z: -5, y: 9 });
+  f.model('lab', { z: -5 });
   // greenhouse
   f.box(10, 3.5, 6, '#bfe8d2', { x: 4, z: 6 }, 'glass');
   f.gable(10, 1.6, 6, '#bfe8d2', { x: 4, z: 6, y: 3.5 });
   for (let i = 0; i < 5; i++) f.box(0.15, 3.5, 6.1, '#f5f5f5', { x: -0.5 + i * 2.25, z: 6 });
-  f.sign(t('sign.lab'), 5, 1.1, { x: -4, z: 0.07, y: 3 }, { bg: '#5b6bd8' });
+  f.sign(t('sign.lab'), 5, 1.1, { x: -4, z: -0.78, y: 3.2 }, { bg: '#5b6bd8' });
   flowerBed(f, -7, 7, 5, 3, ctx.rng);
   return 13;
 };
@@ -184,17 +198,15 @@ const pharmacy: LotBuilder = (f, ctx) => {
   shopFront(f, -4, 6, 12, 10, 3, '#f6efe4', '#2fbf71', t('sign.pharmacy'));
   f.box(1.6, 0.5, 0.3, '#2fbf71', { x: 2.6, z: 6.2, y: 8.6 }, 'glow');
   f.box(0.5, 1.6, 0.3, '#2fbf71', { x: 2.6, z: 6.2, y: 8.05 }, 'glow');
-  f.facade(8, 13.6, 9, '#e8dccb', { x: 7, z: -5 }, 3.4, 3);
-  solarHeater(f, 7, -5, 13.6);
+  storyHouse(f, ['house_cream'], 0, 7, -5);
   sidewalkTrees(f, ctx.rng);
   return 15;
 };
 
 const fitness: LotBuilder = (f) => {
   lotGround(f, 24, 24, GRASS);
-  f.facade(20, 7, 9, '#ffe2c7', { z: -6.5 }, 3.5, 4);
-  f.box(19.5, 4.5, 0.2, '#9fd0ec', { z: -1.95, y: 1 }, 'glass');
-  f.sign(t('sign.fitness'), 6, 1.2, { z: -1.8, y: 6.1 }, { bg: '#ff7a59' });
+  f.model('fitness_centre', { z: -6.5 });
+  f.sign(t('sign.fitness'), 6, 1.2, { z: -2.28, y: 4.6 }, { bg: '#ff7a59' });
   f.box(14, 0.3, 7, '#d8eef7', { x: -1, z: 6 });
   f.box(13, 0.32, 6, '#38a9e0', { x: -1, z: 6 }, 'water');
   for (let i = 0; i < 4; i++) f.box(0.8, 0.3, 2, '#ffffff', { x: 8, z: 3.5 + i * 2.1, y: 0.3 });
@@ -251,13 +263,13 @@ const battery: LotBuilder = (f) => {
 
 const energyHQ: LotBuilder = (f, ctx) => {
   lotGround(f, 24, 24, GRASS);
-  f.facade(18, 15, 12, '#f4f1e6', { z: -3 }, 3.75, 3.6);
-  f.box(0.6, 15, 12, '#4c9a44', { x: -9.3, z: -3 }); // green wall
-  for (let r = 0; r < 3; r++) {
-    for (let c = 0; c < 4; c++) f.box(3.6, 0.1, 2.4, '#1f3f74', { x: -6 + c * 4, z: -7 + r * 3.4, y: 16, rotX: -0.45 }, 'glass');
+  f.model('energy_hq', { z: -3 });
+  // solar panels on frames in the garden show what the company does
+  for (let c = 0; c < 3; c++) {
+    f.box(3.2, 0.1, 2.0, '#1f3f74', { x: -8 + c * 3.6, z: 6.5, y: 1.1, rotX: -0.5 }, 'glass');
+    for (const s of [-1, 1]) f.box(0.12, 1.0, 0.12, '#9aa3ad', { x: -8 + c * 3.6 + s * 1.4, z: 6.5 });
   }
-  windTurbine(f.sub(0, 0, 0, 15), 7.5, -7.5, 5, 2.0);
-  f.sign(t('sign.energy'), 7.5, 1.4, { z: 3.07, y: 3.2 }, { bg: '#f2c14e', fg: '#3b2a00' });
+  f.sign(t('sign.energy'), 7.5, 1.4, { z: 2.07, y: 3.6 }, { bg: '#f2c14e', fg: '#3b2a00' });
   sidewalkTrees(f, ctx.rng);
   return 24;
 };
@@ -397,9 +409,9 @@ const officeTower: LotBuilder = (f, ctx) => {
   f.box(11, h1, 11, glass, { x: -5, z: -4 }, 'glass');
   for (let y = 3.6; y < h1; y += 3.6) f.box(11.3, 0.3, 11.3, '#e9eef4', { x: -5, z: -4, y });
   roofUnits(f, -5, -4, h1, 11, 11, rng);
-  const h2 = 14 + rng() * 10;
-  f.facade(8, h2, 9, pick(['#e8e1d6', '#d9e2ea', '#efe3d1'], rng), { x: 6.5, z: 2 }, 3.4, 2.8);
-  roofUnits(f, 6.5, 2, h2, 8, 9, rng);
+  rng();
+  pick(['#e8e1d6', '#d9e2ea', '#efe3d1'], rng);
+  const h2 = storyHouse(f, HOUSES_WIDE, spotSeed(f, 6.5, 2), 6.5, 2);
   for (const x of [-9, -2]) tree(f, x, 9, 0.9, rng);
   bench(f, -5.5, 9.5, Math.PI);
   return Math.max(h1, h2) + 2;
@@ -437,18 +449,10 @@ const apartments: LotBuilder = (f, ctx) => {
   let top = 0;
   const spots: [number, number][] = [[-6, -5], [6, -5], [-6, 6]];
   for (const [x, z] of spots) {
-    const floors = 5 + Math.floor(rng() * 4);
-    const h = floors * 3.2;
-    top = Math.max(top, h);
-    f.facade(9, h, 8, pick(PASTELS, rng), { x, z }, 3.2, 3);
-    for (let fl = 1; fl < floors; fl++) {
-      for (const bx of [-2.2, 2.2]) {
-        f.box(2.6, 0.2, 1.2, '#f4f4f4', { x: x + bx, z: z + 4.6, y: fl * 3.2 });
-        f.box(2.6, 0.9, 0.08, '#cfd6dd', { x: x + bx, z: z + 5.15, y: fl * 3.2 + 0.2 }, 'glass');
-      }
-    }
-    solarHeater(f, x - 2, z, h);
-    solarHeater(f, x + 2, z, h);
+    rng(); // (was the number of floors)
+    pick(PASTELS, rng);
+    // a tall storybook house in each spot
+    top = Math.max(top, storyHouse(f, HOUSES_TALL, spotSeed(f, x, z), x, z - 0.8));
   }
   flowerBed(f, 6, 6, 6, 4, rng);
   bench(f, 6, 10, Math.PI);
@@ -461,10 +465,9 @@ const houses: LotBuilder = (f, ctx) => {
   const roofs = ['#c4553f', '#a9472f', '#7a4b3a', '#5d6b7a'];
   for (const [x, z] of [[-6, -6], [6, -6], [-6, 6], [6, 6]] as [number, number][]) {
     f.box(10.5, 0.6, 0.3, '#ffffff', { x, z: z + 5.2 }); // picket fence
-    f.facade(7, 4.4, 6, pick(PASTELS, rng), { x, z: z - 0.5 }, 4.4, 2.4);
-    f.gable(7.6, 2.4, 6.8, pick(roofs, rng), { x, z: z - 0.5, y: 4.4 });
-    f.box(0.9, 1.8, 0.9, '#8a6a5a', { x: x + 2, z: z - 1.5, y: 5 });
-    f.box(1.2, 2.2, 0.15, '#7a5236', { x, z: z + 2.55 });
+    pick(PASTELS, rng);
+    pick(roofs, rng);
+    storyHouse(f, HOUSES_NARROW, spotSeed(f, x, z), x - 1, z - 0.6);
     tree(f, x + 4, z + 3, 0.7, rng);
   }
   car(f, -1.5, 4.5, 0, pick(CAR_COLORS, rng));
@@ -516,8 +519,8 @@ const realEstateAgency: LotBuilder = (f, ctx) => {
   const rng = ctx.rng;
   lotGround(f, 24, 24, GRASS);
   shopFront(f, -3, 5, 12, 9, 2, '#fff4e8', '#e46f8e', t('sign.realEstate'));
-  f.facade(7, 9.6, 8, pick(PASTELS, rng), { x: 7.5, z: -5 }, 3.2, 3);
-  f.gable(7.6, 2.4, 8.6, '#c4553f', { x: 7.5, z: -5, y: 9.6 });
+  pick(PASTELS, rng);
+  storyHouse(f, ['house_pink', 'house_mint'], spotSeed(f, 7.5, -5), 7.5, -5);
   for (const [x, z] of [[-9, 9], [9, 6]] as [number, number][]) {
     f.box(0.15, 2.2, 0.15, '#7a5236', { x, z });
     f.sign(t('sign.forSale'), 2.4, 1, { x, z: z + 0.1, y: 2.4 }, { bg: '#ffffff', fg: '#e46f8e', border: '#e46f8e' });
