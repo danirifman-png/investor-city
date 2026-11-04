@@ -5,7 +5,7 @@ import type { Lot } from '../cityLayout';
 import { rectCenter } from '../cityLayout';
 import { Frame } from '../Frame';
 import { createCanvas, SIGN_FONT } from '../Materials';
-import { bench, bin, flowerBed, streetLamp, tree } from '../props';
+import { bin, flowerBed, streetLamp, tree } from '../props';
 import type { BuildContext } from '../types';
 import { shopRow } from './decor';
 
@@ -449,9 +449,9 @@ export function buildOpeningPlaza(lot: Lot, ctx: BuildContext, newsTower: (f: Fr
   bull(f, -13, -6);
 
   // benches around the fountain ring and on the lawns
-  for (const a of [0.6, 1.6, 2.6]) bench(f, PLAZA.fountain.x + Math.sin(a) * 9.4, PLAZA.fountain.z + Math.cos(a) * 9.4, a + Math.PI);
-  bench(f, 14, 12, -Math.PI / 2 + 0.3);
-  bench(f, -15, 12.5, Math.PI / 2);
+  for (const a of [0.6, 1.6, 2.6]) plazaBench(f, PLAZA.fountain.x + Math.sin(a) * 9.4, PLAZA.fountain.z + Math.cos(a) * 9.4, a + Math.PI);
+  plazaBench(f, 14, 12, -Math.PI / 2 + 0.3);
+  plazaBench(f, -15, 12.5, Math.PI / 2);
   // lamps lining the path
   for (const [x, z] of [[-6, -3], [11.5, 9], [-16, 19], [17, 19.5]]) plazaLamp(f, x, z);
   // lush round trees framing the academy and the square
@@ -548,6 +548,17 @@ function plazaDressing(f: Frame, rng: () => number): void {
     }
   }
 
+  // the market's stock, stacked behind the big stall
+  const goods: [Parameters<Frame['model']>[0], number, number, number][] = [
+    ['barrel_apples', -15.2, 3.4, 0.3],
+    ['barrel', -16.0, 4.4, 1.1],
+    ['crate_wooden', -15.6, 9.6, 0.2],
+    ['crate_wooden', -16.5, 10.4, -0.4],
+    ['farmcrate_carrot', -14.7, 10.6, 0.5],
+    ['bucket_wooden_1', -14.6, 4.6, 0],
+  ];
+  for (const [key, x, z, r] of goods) f.model(key, { x, z, y: 0.1, rotY: r, solid: key !== 'bucket_wooden_1' });
+
   // a flower cart by the path
   f.model('flower_cart', { x: -6.8, z: 3.2, rotY: Math.PI / 2 });
 }
@@ -559,4 +570,9 @@ function plazaLamp(f: Frame, x: number, z: number): void {
     f.sphere(0.16, '#ffe9b0', { x, z, y: 3.55 }, 8, 'glow');
     for (const s of [-1, 1]) f.sphere(0.14, '#ffe9b0', { x: x + s * 0.62, z, y: 3.05 }, 8, 'glow');
   });
+}
+
+/** A wooden park bench (CC0 model), sized for the kids' city. */
+function plazaBench(f: Frame, x: number, z: number, rotY: number): void {
+  f.model('bench', { x, z, y: 0.1, rotY, scale: 0.7 });
 }

@@ -77,6 +77,13 @@ export const MODEL_SIZES = {
   shop_toys: [7.5, 11, 4.5],
   flower_cart: [2.2, 1.96, 1.02],
   plaza_lamp: [1.75, 4.0, 1.07],
+  // free CC0 props (Quaternius, models/quaternius)
+  bench: [2.78, 0.53, 0.53],
+  barrel: [0.7, 0.9, 0.7],
+  barrel_apples: [0.7, 0.9, 0.7],
+  crate_wooden: [0.84, 0.93, 0.91],
+  farmcrate_carrot: [0.71, 0.41, 0.57],
+  bucket_wooden_1: [0.43, 0.29, 0.38],
 } as const satisfies Record<string, readonly [number, number, number]>;
 
 export type ModelKey = keyof typeof MODEL_SIZES;
@@ -107,7 +114,9 @@ interface Area {
 }
 
 const PLAZA_MODELS = new Set<string>(['shop_bakery', 'shop_bookshop', 'shop_boutique', 'shop_cafe', 'shop_flowers', 'shop_sweets', 'shop_toys', 'flower_cart', 'plaza_lamp']);
-export const modelUrl = (key: ModelKey) => `models/meshy/${PLAZA_MODELS.has(key) ? 'plaza' : 'props'}/${key}.glb`;
+const QUATERNIUS_MODELS = new Set<string>(['bench', 'barrel', 'barrel_apples', 'crate_wooden', 'farmcrate_carrot', 'bucket_wooden_1']);
+export const modelUrl = (key: ModelKey) =>
+  QUATERNIUS_MODELS.has(key) ? `models/quaternius/${key}.glb` : `models/meshy/${PLAZA_MODELS.has(key) ? 'plaza' : 'props'}/${key}.glb`;
 
 export class ModelLayer {
   readonly root = new THREE.Group();
