@@ -8,14 +8,14 @@ import type { NpcId } from './npcs';
  * back wall (-d/2) to the door (+d/2). Text: `interior.<id>.name`,
  * `spot.<interior>.<spot>.prompt` and, for info spots, `.title / .body`.
  */
-export type InteriorId = 'pizzeria' | 'bank' | 'exchange' | 'academy' | 'newsTower' | 'startupHub' | 'realEstateAgency' | 'skyLand' | 'home' | 'mall';
+export type InteriorId = 'pizzeria' | 'bank' | 'exchange' | 'academy' | 'newsTower' | 'startupHub' | 'realEstateAgency' | 'skyLand' | 'home' | 'mall' | 'island';
 
 export interface Hotspot {
   id: string;
   /** shop: opens the shop at `tab`. */
   tab?: ShopCategory;
-  /** clue: evidence for a mission; info: a short explanation; game: a minigame; mission: the building's missions; exit: the way out; portal: a magic portal to Cloud Land; life: renting or buying a home; rest: sleep; kitchen: eat and drink at home. */
-  kind: 'clue' | 'info' | 'game' | 'mission' | 'exit' | 'portal' | 'life' | 'rest' | 'kitchen' | 'shop';
+  /** clue: evidence for a mission; info: a short explanation; game: a minigame; mission: the building's missions; exit: the way out; portal: a magic portal to Cloud Land; life: renting or buying a home; rest: sleep; kitchen: eat and drink at home; travel: the travel agency (buy a trip); fly: board the plane home; coconut: the beach drinks stand. */
+  kind: 'clue' | 'info' | 'game' | 'mission' | 'exit' | 'portal' | 'life' | 'rest' | 'kitchen' | 'shop' | 'travel' | 'fly' | 'coconut';
   x: number;
   z: number;
   /** Marker height (default 1.6). */
@@ -46,6 +46,11 @@ export interface InteriorDef {
 
 /** The secret portal in the city (a quiet corner of the park, east of the paths, before the pond) that leads to Cloud Land (world coordinates). */
 export const CITY_PORTAL = { x: 22, z: 88, y: 0.38 };
+
+/** Adventure Island (room coordinates): its square of play, where you land and the plane's door. */
+export const ISLAND_SIZE = 76;
+export const ISLAND_ENTRY = { x: 0, z: 16.5 };
+export const ISLAND_PLANE_DOOR = { x: -3.2, z: 23.3 };
 
 export const INTERIORS: Record<InteriorId, InteriorDef> = {
   pizzeria: {
@@ -185,7 +190,24 @@ export const INTERIORS: Record<InteriorId, InteriorDef> = {
       { id: 'fun', kind: 'shop', tab: 'fun', x: 6.5, z: -7.6, y: MALL.upper + 2.2 },
       { id: 'lift', kind: 'info', x: -7, z: -8.9, y: 2.2 },
       { id: 'sale', kind: 'info', x: -6.5, z: 4.5, y: 2.4 },
+      // the travel agency under the gallery: buy a trip to Adventure Island
+      { id: 'travel', kind: 'travel', x: 7.4, z: -6.4, y: 2.2 },
       { id: 'exit', kind: 'exit', x: 0, z: 9.4, y: 2.2 },
+    ],
+  },
+  // Adventure Island: a whole new world reached only by plane from the mall's travel agency
+  island: {
+    id: 'island',
+    poi: '',
+    open: true,
+    size: { w: ISLAND_SIZE, d: ISLAND_SIZE },
+    door: { dx: 0, dz: 0, y: 0 },
+    entry: { x: ISLAND_ENTRY.x, z: ISLAND_ENTRY.z },
+    hotspots: [
+      { id: 'plane', kind: 'fly', x: ISLAND_PLANE_DOOR.x, z: ISLAND_PLANE_DOOR.z, y: 3.2 },
+      { id: 'coconut', kind: 'coconut', x: -11.5, z: 6.6, y: 2.4 },
+      { id: 'logbook', kind: 'info', x: 19.8, z: 3.4, y: 2.2 },
+      { id: 'budget', kind: 'info', x: 4.2, z: 15.4, y: 2.6 },
     ],
   },
 };

@@ -443,3 +443,9 @@ Measured at the plaza in a headless browser (1400×700, pixel ratio 1), per fram
 | medium | 180 | 3.74M | 190 | 50 |
 | high | 190 | 3.74M | 202 | 58 |
 | ultra | 363 | 7.48M | 208 | 64 |
+
+## Holidays: the travel agency and Adventure Island
+
+- **Buying a trip.** `content/travel.ts` holds the two tickets (economy 40, comfort 75 coins: the same plane to the same island, the comfort one with a softer seat and a snack) and the pure `buyTicket` rule, which says how many coins are missing when the wallet is short. The agency is a shop front under the mall gallery (hotspot kind `travel`); `ui/TravelView.ts` shows both tickets with what you get and what you give up, and teaches `opportunityCost` and `savings` on purchase.
+- **The flight.** `FlightView` (same file) is a full-screen sky with drifting clouds, a plane crossing it and a money fact on the way (6 seconds, "land now" skips). Out to the island in blue, home in a sunset.
+- **Adventure Island** (`world/interiors/island.ts`, interior `island`): an open "room" like Cloud Land, but with no door or portal in the city; only the plane reaches it, and the plane on the beach (hotspot kind `fly`) flies back to the agency (the return ticket is included). Leaving it any other way ("take me there", map travel) lands at the mall door (`Game.leaveRoom`). A sea disc is drawn without collision and a ring of water blocks stops the player at the beach; the volcano's five rings are drawn as cylinders but collide as slabs inside each circle (`discSolid`), since the box of a disc would leave walkable corners. 16 coins and the volcano chest use `RoomTreasure` (the generalised Cloud Land treasure, ids `isl*`), and give back less than the cheapest ticket on purpose: a holiday is spending. A coconut stand (kind `coconut`) costs 3 coins for water and a little food. The island has its own calypso theme (`island` in `content/music.ts`). Text in `he.travel.json`.

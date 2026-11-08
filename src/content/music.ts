@@ -8,7 +8,7 @@
  * per bar, separated by a space (`Dm7 G`).
  */
 
-export type ThemeId = 'town' | 'market' | 'tech' | 'park' | 'night' | 'room' | 'sky';
+export type ThemeId = 'town' | 'market' | 'tech' | 'park' | 'night' | 'room' | 'sky' | 'island';
 export type Lead = 'square' | 'bell' | 'flute' | 'accordion' | 'synth';
 export type Drums = 'bounce' | 'swing' | 'electro' | 'soft' | 'none';
 
@@ -246,6 +246,41 @@ export const THEMES: Record<ThemeId, Theme> = {
       ],
     },
   },
+  // Adventure Island: a sunny calypso in F with a bouncy beat
+  island: {
+    bpm: 118,
+    swing: 0.58,
+    lead: 'bell',
+    drums: 'bounce',
+    arp: true,
+    pad: false,
+    a: {
+      chords: ['F', 'Bb', 'C', 'F', 'F', 'Bb', 'C7', 'F'],
+      tune: [
+        'C6:.5 A5:.5 C6:1 F6:1 C6:1',
+        'D6:1.5 Bb5:.5 D6:1 F6:1',
+        'E6:1 G6:.5 E6:.5 C6:1 G5:1',
+        'A5:3 -:1',
+        'C6:.5 A5:.5 C6:1 F6:1 A6:1',
+        'G6:1.5 F6:.5 D6:1 Bb5:1',
+        'G5:1 Bb5:.5 C6:.5 E6:1 G6:1',
+        'F6:3 -:1',
+      ],
+    },
+    b: {
+      chords: ['Bb', 'F', 'Gm7 C', 'F', 'Bb', 'F', 'G7', 'C7'],
+      tune: [
+        'D6:1 F6:1 D6:1 Bb5:1',
+        'C6:1.5 A5:.5 F5:2',
+        'G5:.5 Bb5:.5 D6:1 E6:1 G6:1',
+        'F6:2 -:1 C6:1',
+        'D6:.5 F6:.5 Bb6:1 A6:1 F6:1',
+        'A6:1.5 G6:.5 F6:2',
+        'B5:1 D6:1 F6:1 G6:1',
+        'E6:2 G6:2',
+      ],
+    },
+  },
 };
 
 const PITCH: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
@@ -308,6 +343,7 @@ export function barChords(bar: string): { chord: Chord; at: number; beats: numbe
 /** Which theme plays where. Night wins outdoors; rooms have their own. */
 export function themeFor(where: { zone: string | null; room: string | null; night: boolean }): ThemeId {
   if (where.room === 'skyLand') return 'sky';
+  if (where.room === 'island') return 'island';
   if (where.room) return 'room';
   if (where.night) return 'night';
   switch (where.zone) {

@@ -4759,3 +4759,70 @@ body.serving .interact-prompt {
 .album-next { margin-top: 10px; font-size: 0.9em; }
 .album-next summary { cursor: pointer; opacity: 0.75; }
 .album-next ul { margin: 6px 0 0; padding-inline-start: 20px; opacity: 0.75; }
+
+/* ---------------- travel agency and the flight ---------------- */
+.travel-panel { max-width: 520px; max-height: 88vh; overflow-y: auto; }
+.travel-intro { margin: 0 0 6px; }
+.travel-ticket.ticket-comfort { border-color: rgba(255, 216, 77, 0.6); }
+.travel-tip { margin-top: 8px; }
+.flight-modal {
+  background: linear-gradient(180deg, #4fa8e8 0%, #8fd0ff 55%, #dff3ff 100%);
+  animation: fade 0.8s ease;
+  align-content: space-between;
+  justify-items: center;
+  overflow: hidden;
+}
+.flight-modal.home { background: linear-gradient(180deg, #ff9f6b 0%, #ffc98f 45%, #ffe9c9 100%); }
+.flight-sky { position: relative; width: 100%; height: 50vh; }
+.flight-plane {
+  --k: 0;
+  position: absolute;
+  top: 38%;
+  left: calc(8% + var(--k) * 70%);
+  font-size: 64px;
+  filter: drop-shadow(0 6px 6px rgba(0, 0, 40, 0.25));
+  animation: flightBob 1.6s ease-in-out infinite;
+}
+/* flying home it crosses the other way, nose first */
+.flight-modal.home .flight-plane { left: auto; right: calc(8% + var(--k) * 70%); transform: scaleX(-1); }
+@keyframes flightBob {
+  50% { margin-top: 14px; }
+}
+[dir='ltr'] .flight-plane { transform: none; }
+.flight-modal.home .flight-plane { inset-inline-start: auto; inset-inline-end: calc(8% + var(--k) * 70%); transform: none; }
+[dir='ltr'] .flight-modal.home .flight-plane { transform: scaleX(-1); }
+.flight-cloud {
+  position: absolute;
+  font-size: 56px;
+  opacity: 0.9;
+  animation: flightCloud 5s linear infinite;
+}
+.flight-cloud.c1 { top: 10%; animation-delay: 0s; }
+.flight-cloud.c2 { top: 55%; animation-delay: -1.2s; font-size: 80px; }
+.flight-cloud.c3 { top: 25%; animation-delay: -2.4s; font-size: 40px; }
+.flight-cloud.c4 { top: 70%; animation-delay: -3.3s; }
+.flight-cloud.c5 { top: 5%; animation-delay: -4.2s; font-size: 70px; }
+@keyframes flightCloud {
+  from { left: 110%; }
+  to { left: -15%; }
+}
+.flight-modal.home .flight-cloud { animation-direction: reverse; }
+.flight-panel {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  margin-bottom: calc(28px + var(--safe-bottom));
+  padding: 14px 18px;
+  border-radius: var(--radius);
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  color: var(--text);
+  width: min(420px, 88vw);
+  text-align: center;
+}
+.flight-title { font-weight: 800; font-size: 1.15em; }
+.flight-fact { margin: 0; line-height: 1.5; }
+.flight-fill { display: block; height: 100%; background: #4fb6ff; border-radius: 5px; width: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .flight-cloud, .flight-plane { animation: none; }
+}

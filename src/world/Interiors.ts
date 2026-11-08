@@ -11,6 +11,7 @@ import { FURNITURE } from '../content/home';
 import { loadGltf } from '../character/AvatarNpc';
 import { buildSkyLandInterior, roomPortal } from './interiors/skyLand';
 import { buildMallInterior } from './interiors/mall';
+import { buildIslandInterior } from './interiors/island';
 import type { CityMaterials } from './Materials';
 import { Marker } from './Markers';
 import { buildPortal, type Portal } from './Portal';
@@ -44,6 +45,7 @@ const ROOM_BUILDERS: Record<InteriorId, (f: Frame, ctx: BuildContext) => void> =
   skyLand: buildSkyLandInterior,
   home: buildHomeInterior,
   mall: buildMallInterior,
+  island: buildIslandInterior,
 };
 
 export interface Room {
@@ -132,7 +134,7 @@ export class Interiors {
     for (const s of def.hotspots) if (s.kind === 'portal') roomPortal(f, ctx, s.x, s.z, Math.PI / 2);
     const walls: Room['walls'] = [];
     if (!def.open) this.buildWalls(def, ox, oz, group, walls, collision);
-    const markers: Marker[] = def.hotspots.map((s) => new Marker(s.kind === 'mission' || s.kind === 'life' || s.kind === 'rest' || s.kind === 'kitchen' || s.kind === 'shop' ? 'game' : s.kind === 'portal' ? 'door' : s.kind, ox + s.x, s.y ?? 1.6, oz + s.z, s.id));
+    const markers: Marker[] = def.hotspots.map((s) => new Marker(s.kind === 'mission' || s.kind === 'life' || s.kind === 'rest' || s.kind === 'kitchen' || s.kind === 'shop' || s.kind === 'travel' || s.kind === 'coconut' ? 'game' : s.kind === 'portal' || s.kind === 'fly' ? 'door' : s.kind, ox + s.x, s.y ?? 1.6, oz + s.z, s.id));
     for (const m of markers) group.add(m.sprite);
 
     const staticMeshes = batch.build(materials.byKey);
@@ -328,7 +330,8 @@ export class Interiors {
 
   /** Where the player appears outside when leaving (in front of the door, facing the street). */
   exit(id: InteriorId): { x: number; z: number; y: number; heading: number } {
-    const door = this.doors.find((d) => d.id === id)!;
+    // Adventure Island has no door in the city (only the plane reaches it): its way out is the mall, where the agency is
+    const door = this.doors.find((d) => d.id === id) ?? this.doors.find((d) => d.id === 'mall')!;
     return { x: door.x, z: door.z + 1.4, y: door.y, heading: 0 };
   }
 
