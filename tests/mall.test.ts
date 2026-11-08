@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { ESCALATOR, ESCALATORS, MALL, escalatorHeight } from '../src/content/mall';
 import { INTERIORS } from '../src/content/interiors';
-import he from '../src/i18n/locales/he.life.json';
+import heLife from '../src/i18n/locales/he.life.json';
+import heTravel from '../src/i18n/locales/he.travel.json';
+
+const he = { ...heLife, ...heTravel };
 
 describe('mall', () => {
   it('escalators climb from the floor to the upper floor', () => {

@@ -129,6 +129,20 @@ export function buildMallInterior(f: Frame, ctx: BuildContext): void {
     f.box(0.02, 2.4, 0.06, '#5b636d', { x: -7, z: backZ + 0.5 });
   });
   f.sign(t('room.mall.lift'), 1.8, 0.35, { x: -7, z: backZ + 0.52, y: 2.7 }, { bg: '#2b3446', fg: '#ffffff' });
+  // under the gallery on the right: the travel agency (trips to Adventure Island)
+  shopFront(f, ctx, 7.4, backZ + 1.6, 0, 0, t('room.mall.travel'), '#1f9bd1', (s) => {
+    // a model plane over the counter and a beach poster
+    s.box(2.4, 1.0, 0.6, '#f3efe6', { z: -0.75 });
+    ctx.batch.noCollision(() => {
+      s.geo(new THREE.CylinderGeometry(0.14, 0.14, 1.1, 10).rotateZ(Math.PI / 2), '#ffffff', { x: 0.2, z: -0.75, y: 1.75 });
+      s.box(0.24, 0.03, 1.3, '#ffffff', { x: 0.25, z: -0.75, y: 1.74 });
+      s.box(0.2, 0.3, 0.03, '#1f9bd1', { x: -0.3, z: -0.75, y: 1.9 });
+      s.box(1.1, 0.8, 0.03, '#5fd4d8', { x: -1.0, z: -1.17, y: 1.6 });
+      s.box(1.1, 0.25, 0.035, '#f2dca2', { x: -1.0, z: -1.16, y: 1.3 });
+      s.sphere(0.12, '#ffd84a', { x: -0.7, z: -1.15, y: 1.85 }, 8);
+    });
+  });
+  f.model('standing_globe', { x: 10.2, z: backZ + 2.6 });
   // upper floor, along the back wall: home & furniture and the arcade
   shopFront(f, ctx, -6.5, backZ + 1.6, 0, upper, t('room.mall.home'), '#4aa3df', (s) => {
     s.box(1.6, 0.45, 0.7, '#8fb8c9', { x: -0.6, z: -0.8 });

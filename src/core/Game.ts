@@ -54,7 +54,10 @@ import { type DaySummary, type ShopLevel } from './PizzaShop';
 import { PizzaShopView } from '../ui/PizzaShopView';
 import { Collectibles, GOLD_TOTAL, type FoundEvent } from '../world/Collectibles';
 import { PLAZA, TRAMPOLINE } from '../world/landmarks/plaza';
-import { SKY_TRAMPOLINE, SkyTreasure, type SkyEvent } from '../world/interiors/skyLand';
+import { SKY_CHEST, SKY_TRAMPOLINE, SkyTreasure, type SkyEvent } from '../world/interiors/skyLand';
+import { ISLAND_CHEST, IslandTreasure } from '../world/interiors/island';
+import { FlightView, TravelView } from '../ui/TravelView';
+import { buyTicket, COCONUT, type TripClass } from '../content/travel';
 import { BusinessSite } from '../world/BusinessSite';
 import { CityEventDecor } from '../world/CityEventDecor';
 import { BusinessView, CITY_ICON } from '../ui/BusinessView';
@@ -267,6 +270,7 @@ export class Game {
   private coach!: Coach;
   private coachLast = new THREE.Vector2();
   private sky!: SkyTreasure;
+  private island!: IslandTreasure;
   /** How long the player has been walking into a door (walk-in entry). */
   private walkInTime = 0;
   private bizSite!: BusinessSite;
@@ -290,6 +294,8 @@ export class Game {
   readonly missionsView: MissionView;
   readonly lifeView: LifeView;
   readonly sleepView = new SleepView();
+  readonly flightView = new FlightView();
+  readonly travelView: TravelView;
   readonly friendView: FriendView;
   readonly jobView: JobView;
   readonly serviceView: ServiceView;
@@ -363,6 +369,9 @@ export class Game {
     const sky = this.interiors.rooms.get('skyLand')!;
     this.sky = new SkyTreasure(sky.ox, sky.oz);
     sky.group.add(this.sky.group);
+    const isl = this.interiors.rooms.get('island')!;
+    this.island = new IslandTreasure(isl.ox, isl.oz);
+    isl.group.add(this.island.group);
 
     this.data = this.saves.load();
     this.player = new PlayerController(this.data?.character ?? DEFAULT_LOOK, this.input, this.city.collision);
@@ -567,6 +576,13 @@ export class Game {
     });
     this.hud.addOverlay(this.lifeView.el, () => this.lifeView.close());
     this.hud.addOverlay(this.sleepView.el, () => this.sleepView.finish());
+    this.travelView = new TravelView({
+      wallet: () => this.data?.growth.coins ?? null,
+      buy: (cls) => this.buyTrip(cls),
+      onClose: () => this.hud.closeOverlays(),
+    });
+    this.hud.addOverlay(this.travelView.el, () => this.travelView.close());
+    this.hud.addOverlay(this.flightView.el, () => this.flightView.finish());
     this.friendView = new FriendView({
       view: (id) => {
         const d = this.data;
@@ -1754,7 +1770,7 @@ export class Game {
       if (this.interiors.current === 'mall') this.rideEscalator(dt);
       this.updateService(dt);
       this.serviceQueue.update(dt);
-      if (this.conv || this.sleepView.open) this.hud.setPrompt(null);
+      if (this.conv || this.sleepView.open || this.flightView.open) this.hud.setPrompt(null);
       else if (this.nearNpc) this.hud.setPrompt({ id: `npc:${this.nearNpc.id}`, text: t('hud.talk', { name: t(`npc.${this.nearNpc.id}.short`) }) });
       else if (this.nearThing) this.hud.setPrompt(this.thingPrompt(this.nearThing));
       else if (this.nearPoi) this.hud.setPrompt({ id: this.nearPoi.id, text: t('hud.interact', { name: t(`poi.${this.nearPoi.key}.name`) }) });
@@ -1820,6 +1836,10 @@ export class Game {
     if (this.interiors.current === 'skyLand') {
       const got = this.sky.update(this.elapsed, dt, playing ? this.player.position : null);
       if (got.length) this.onSkyFound(got);
+    }
+    if (this.interiors.current === 'island') {
+      const got = this.island.update(this.elapsed, dt, playing ? this.player.position : null);
+      if (got.length) this.onIslandFound(got);
     }
     const near = nearKey(this.nearThing);
     this.interiors.update(this.elapsed, dt, this.cam.camera, near);
@@ -1919,13 +1939,94 @@ export class Game {
         this.sound.play('coin');
         this.hud.toast(all ? t('sky.allCoins', { total: e.total }) : t('sky.coin', { n: e.count, total: e.total }), all ? 2800 : 900);
       } else {
-        this.reward({ coins: e.coins, xp: 60 });
+        this.reward({ coins: SKY_CHEST.coins, xp: 60 });
         this.sound.play('chest');
         this.player.animator.play('cheer');
-        this.showCard({ kind: 'curio', kicker: t('chest.kicker'), title: t('sky.chestTitle', { coins: e.coins }), body: t('sky.chestBody') });
+        this.showCard({ kind: 'curio', kicker: t('chest.kicker'), title: t('sky.chestTitle', { coins: SKY_CHEST.coins }), body: t('sky.chestBody') });
         this.learn(['interest', 'savings']);
       }
     }
+    this.save(false);
+  }
+
+  /** Gold coins and the volcano chest on Adventure Island. */
+  private onIslandFound(events: SkyEvent[]): void {
+    const d = this.data;
+    if (!d) return;
+    for (const e of events) {
+      if (!d.found.includes(e.id)) d.found.push(e.id);
+      if (e.kind === 'coin') {
+        const all = e.count === e.total;
+        this.reward({ coins: 1, xp: all ? 40 : 3 });
+        this.sound.play('coin');
+        this.hud.toast(all ? t('island.allCoins', { total: e.total }) : t('island.coin', { n: e.count, total: e.total }), all ? 2800 : 900);
+      } else {
+        this.reward({ coins: ISLAND_CHEST.coins, xp: 60 });
+        this.sound.play('chest');
+        this.player.animator.play('cheer');
+        this.showCard({ kind: 'curio', kicker: t('chest.kicker'), title: t('island.chestTitle', { coins: ISLAND_CHEST.coins }), body: t('island.chestBody') });
+        this.learn(['opportunityCost']);
+      }
+    }
+    this.save(false);
+  }
+
+  /** The travel agency in the mall. */
+  private openTravel(): void {
+    if (!this.data) return;
+    this.hud.closeOverlays();
+    this.travelView.show();
+    this.cam.enabled = false;
+  }
+
+  /** Pays for a ticket and flies to Adventure Island. */
+  private buyTrip(cls: TripClass): void {
+    const d = this.data;
+    if (!d || this.flightView.open) return;
+    const r = buyTicket(d.growth.coins, cls);
+    if (!r.ok) return;
+    d.growth.coins = r.wallet;
+    this.hud.playerCard.update(d.character.nickname, d.character.topColor, d.growth);
+    this.sound.play('coin');
+    this.learn(['opportunityCost', 'savings']);
+    this.noteWorth();
+    this.save(false);
+    this.hud.closeOverlays();
+    this.cam.enabled = false;
+    this.flightView.show(false, cls, () => {
+      this.hud.closeOverlays();
+      this.enterRoom('island');
+    });
+  }
+
+  /** Boards the plane on the island and flies back to the mall's travel agency (the return ticket is included). */
+  private flyHome(): void {
+    if (!this.data || this.flightView.open || this.interiors.current !== 'island') return;
+    this.hud.closeOverlays();
+    this.cam.enabled = false;
+    this.sound.play('door');
+    this.flightView.show(true, null, () => {
+      this.hud.closeOverlays();
+      this.enterRoom('mall', { x: 7.4, z: -4.6, heading: Math.PI });
+      window.setTimeout(() => this.hud.toast(t('island.welcomeHome'), 3600), 900);
+    });
+  }
+
+  /** A coconut drink at the beach stand: a little spending on holiday. */
+  private buyCoconut(): void {
+    const d = this.data;
+    if (!d) return;
+    if (d.growth.coins < COCONUT.price) {
+      this.hud.toast(t('island.coconutNoCoins', { n: COCONUT.price }), 3200);
+      return;
+    }
+    d.growth.coins -= COCONUT.price;
+    d.needs = addNeeds(d.needs, { water: COCONUT.water, food: COCONUT.food });
+    this.hud.playerCard.update(d.character.nickname, d.character.topColor, d.growth);
+    this.sound.play('coin');
+    this.player.animator.play('happy');
+    this.hud.toast(t('island.coconutBought', { n: COCONUT.price }), 3600);
+    this.showNeeds();
     this.save(false);
   }
 
@@ -1950,7 +2051,7 @@ export class Game {
       const found = this.data?.learning.curiosities.includes(n.id);
       return { id, text: found ? t(`curio.${n.id}.title`) : t('curio.prompt') };
     }
-    return { id, text: n.spot === 'exit' ? t(n.room === 'skyLand' ? 'sky.exit' : 'door.exit') : t(`spot.${n.room}.${n.spot}.prompt`) };
+    return { id, text: n.spot === 'exit' ? t(n.room === 'skyLand' ? 'sky.exit' : 'door.exit') : t(`spot.${n.room}.${n.spot}.prompt`, { n: COCONUT.price }) };
   }
 
   private useThing(n: Near): void {
@@ -1973,6 +2074,9 @@ export class Game {
     if (spot.kind === 'rest') return this.sleepAtHome();
     if (spot.kind === 'kitchen') return this.useKitchen();
     if (spot.kind === 'shop') return this.openStore(spot.tab);
+    if (spot.kind === 'travel') return this.openTravel();
+    if (spot.kind === 'fly') return this.flyHome();
+    if (spot.kind === 'coconut') return this.buyCoconut();
     if (n.room === 'mall' && n.spot === 'lift' && this.data && treasureDone(this.data.treasure)) {
       this.player.animator.play('think');
       return this.showCard({ kind: 'info', kicker: t('spot.kicker'), title: t('spot.mall.lift.title'), body: t('spot.mall.lift.bodyDone') });
@@ -2234,7 +2338,8 @@ export class Game {
     }, FADE_MS);
   }
 
-  private enterRoom(id: InteriorId): void {
+  /** Goes into a room (by its door, a portal or a flight); `at` puts the player at a spot in room coordinates instead of the entry. */
+  private enterRoom(id: InteriorId, at?: { x: number; z: number; heading: number }): void {
     if (!this.data || this.interiors.current === id || this.fading) return;
     if (id === 'home' && !this.data.life.home) {
       // the house is waiting: rent or buy it at the agency first
@@ -2262,17 +2367,18 @@ export class Game {
       }
       const room = this.interiors.rooms.get(id)!;
       this.player.bounds = { x0: room.ox - def.size.w / 2, z0: room.oz - def.size.d / 2, x1: room.ox + def.size.w / 2, z1: room.oz + def.size.d / 2 };
-      const e = this.interiors.entry(id);
+      const e = at ? { ...this.interiors.toWorld(id, at.x, at.z), heading: at.heading } : this.interiors.entry(id);
       this.player.teleport(e.x, e.z, e.heading);
       // walls fade instead of pushing the camera in
       this.cam.collision = null;
       this.cam.flyTo(e.x, e.z, 10, 0.5, { yaw: e.heading + Math.PI, pitch: 0.72 });
       this.hud.setIndoors(this.interiors.roomName(id));
-      this.sound.play(id === 'skyLand' ? 'portal' : 'door');
+      this.sound.play(id === 'skyLand' ? 'portal' : id === 'island' ? 'success' : 'door');
       this.coach.did('enter');
       this.updateMusic();
-      this.hud.toast(id === 'skyLand' ? t('sky.arrive') : this.interiors.roomName(id), id === 'skyLand' ? 3200 : undefined);
-      if (id === 'skyLand') this.player.animator.play('cheer');
+      const arrive = id === 'skyLand' ? t('sky.arrive') : id === 'island' ? t('island.arrive') : null;
+      this.hud.toast(arrive ?? this.interiors.roomName(id), arrive ? 3600 : undefined);
+      if (arrive) this.player.animator.play('cheer');
       this.updateSocialUi();
     });
   }
@@ -2294,6 +2400,7 @@ export class Game {
         a.goBack();
       }
       this.player.bounds = CITY_BOUNDS;
+      // leaving Adventure Island any other way than the plane lands at the mall (see Interiors.exit)
       const out = this.interiors.exit(id);
       this.player.teleport(out.x, out.z, out.heading, out.y);
       this.extras.buddy.snap(this.player.position, this.player.heading);
@@ -2566,6 +2673,7 @@ export class Game {
     this.treasureMarks.show(nextStep(d.treasure));
     this.collect.restore(d.found);
     this.sky.restore(d.found);
+    this.island.restore(d.found);
     this.bizSite.setStage(d.missions.business.stage, this.ownerName());
     if (hasFlag(d.social, 'robot.friend') && !this.extras.buddy.following) {
       this.extras.buddy.follow();

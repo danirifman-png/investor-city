@@ -135,12 +135,20 @@ export function skyCoins(): SkySpot[] {
 
 export const SKY_CHEST = { id: 'skyChest', coins: 30 };
 
-export type SkyEvent = { kind: 'coin'; id: string; count: number; total: number } | { kind: 'chest'; id: string; coins: number };
+export type SkyEvent = { kind: 'coin'; id: string; count: number; total: number } | { kind: 'chest'; id: string };
 
 const REACH = 0.9;
 
-/** The coins and the chest of Cloud Land: drawn in the room and picked up by touch. */
-export class SkyTreasure {
+/** Coins and one treasure chest in a place away from the city (room coordinates). */
+export interface TreasureConfig {
+  /** Every id starts with it, so `restore` picks this place's finds out of the save. */
+  prefix: string;
+  coins: SkySpot[];
+  chest: { id: string; x: number; y: number; z: number; rotY?: number; scale?: number };
+}
+
+/** The coins and the chest of a place (Cloud Land, Adventure Island): drawn in the room and picked up by touch. */
+export class RoomTreasure {
   readonly group = new THREE.Group();
   readonly coins: SkySpot[];
   private found = new Set<string>();
@@ -149,22 +157,27 @@ export class SkyTreasure {
   private chest = new THREE.Group();
   private chestAt: THREE.Vector3;
   private opening = -1;
+  private prefix: string;
+  private chestId: string;
 
-  constructor(ox: number, oz: number) {
-    this.group.name = 'sky-treasure';
-    this.coins = skyCoins().map((c) => ({ ...c, x: c.x + ox, z: c.z + oz }));
+  constructor(ox: number, oz: number, cfg: TreasureConfig) {
+    this.group.name = `${cfg.prefix}-treasure`;
+    this.prefix = cfg.prefix;
+    this.chestId = cfg.chest.id;
+    this.coins = cfg.coins.map((c) => ({ ...c, x: c.x + ox, z: c.z + oz }));
     const mat = new THREE.MeshStandardMaterial({ color: '#ffc928', metalness: 0.75, roughness: 0.28, emissive: '#7a4a00', emissiveIntensity: 0.35 });
     this.mesh = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.34, 0.34, 0.08, 24).rotateX(Math.PI / 2), mat, this.coins.length);
     this.mesh.frustumCulled = false;
     this.group.add(this.mesh);
-    this.chestAt = new THREE.Vector3(ox + SKY_TOP.x, SKY_TOP.top, oz + SKY_TOP.z);
+    this.chestAt = new THREE.Vector3(ox + cfg.chest.x, cfg.chest.y, oz + cfg.chest.z);
     this.chest.position.copy(this.chestAt);
-    this.chest.rotation.y = -Math.PI / 2;
+    this.chest.rotation.y = cfg.chest.rotY ?? -Math.PI / 2;
     this.group.add(this.chest);
+    const scale = cfg.chest.scale ?? 1.6;
     void loadGltf('models/meshy/props/treasure_chest.glb')
       .then((g) => {
         const obj = g.scene.clone(true);
-        obj.scale.setScalar(1.6);
+        obj.scale.setScalar(scale);
         obj.traverse((o) => ((o as THREE.Mesh).isMesh ? (o.castShadow = true) : null));
         this.chest.add(obj);
       })
@@ -176,8 +189,8 @@ export class SkyTreasure {
   }
 
   restore(ids: string[]): void {
-    this.found = new Set(ids.filter((id) => id.startsWith('sky')));
-    this.chest.visible = !this.found.has(SKY_CHEST.id);
+    this.found = new Set(ids.filter((id) => id.startsWith(this.prefix)));
+    this.chest.visible = !this.found.has(this.chestId);
   }
 
   get coinCount(): number {
@@ -201,10 +214,10 @@ export class SkyTreasure {
       this.mesh.setMatrixAt(i, this.dummy.matrix);
     });
     this.mesh.instanceMatrix.needsUpdate = true;
-    if (!this.found.has(SKY_CHEST.id) && player && Math.hypot(player.x - this.chestAt.x, player.z - this.chestAt.z) < 1.6 && Math.abs(player.y - this.chestAt.y) < 1.2) {
-      this.found.add(SKY_CHEST.id);
+    if (!this.found.has(this.chestId) && player && Math.hypot(player.x - this.chestAt.x, player.z - this.chestAt.z) < 1.6 && Math.abs(player.y - this.chestAt.y) < 1.2) {
+      this.found.add(this.chestId);
       this.opening = 0;
-      events.push({ kind: 'chest', id: SKY_CHEST.id, coins: SKY_CHEST.coins });
+      events.push({ kind: 'chest', id: this.chestId });
     }
     if (this.opening >= 0) {
       this.opening += dt;
@@ -216,5 +229,12 @@ export class SkyTreasure {
       }
     }
     return events;
+  }
+}
+
+/** Cloud Land's coins and the chest on the treasure island. */
+export class SkyTreasure extends RoomTreasure {
+  constructor(ox: number, oz: number) {
+    super(ox, oz, { prefix: 'sky', coins: skyCoins(), chest: { id: SKY_CHEST.id, x: SKY_TOP.x, y: SKY_TOP.top, z: SKY_TOP.z } });
   }
 }
